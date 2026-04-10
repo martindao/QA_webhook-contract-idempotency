@@ -1,0 +1,34 @@
+{
+  "missingId": {
+    "type": "payment.succeeded",
+    "timestamp": "2026-04-10T10:00:00Z",
+    "data": { "amount": 1000 }
+  },
+  "missingType": {
+    "id": "evt_missing_type",
+    "timestamp": "2026-04-10T10:00:00Z",
+    "data": { "amount": 1000 }
+  },
+  "missingTimestamp": {
+    "id": "evt_missing_ts",
+    "type": "payment.succeeded",
+    "data": { "amount": 1000 }
+  },
+  "missingData": {
+    "id": "evt_missing_data",
+    "type": "payment.succeeded",
+    "timestamp": "2026-04-10T10:00:00Z"
+  },
+  "invalidType": {
+    "id": "evt_invalid_type",
+    "type": "payment.refunded",
+    "timestamp": "2026-04-10T10:00:00Z",
+    "data": { "amount": 1000 }
+  },
+  "oldTimestamp": {
+    "id": "evt_old_ts",
+    "type": "payment.succeeded",
+    "timestamp": "2026-01-01T00:00:00Z",
+    "data": { "amount": 1000 }
+  }
+}

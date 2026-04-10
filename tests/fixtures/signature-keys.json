@@ -1,0 +1,5 @@
+{
+  "validSecret": "test-webhook-secret-2026",
+  "invalidSecret": "wrong-secret-key",
+  "defaultSecret": "webhook-demo-secret-2026"
+}

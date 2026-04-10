@@ -1,0 +1,25 @@
+{
+  "name": "webhook-contract-idempotency",
+  "version": "1.0.0",
+  "description": "Webhook contract testing and idempotency verification harness",
+  "scripts": {
+    "start:provider": "node mock-provider/src/webhook-server.js",
+    "start:consumer": "node webhook-consumer/src/webhook-handler.js",
+    "test:contract": "vitest run tests/contract",
+    "test:idempotency": "vitest run tests/idempotency",
+    "test:failures": "vitest run tests/failure-modes",
+    "test:all": "vitest run tests",
+    "console": "node support-console/server.js",
+    "start:all": "concurrently -n provider,consumer,console -c blue,green,yellow \"npm run start:provider\" \"npm run start:consumer\" \"npm run console\""
+  },
+  "dependencies": {
+    "concurrently": "^8.2.2",
+    "chalk": "^4.1.2",
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "vitest": "^1.2.0",
+    "@playwright/test": "^1.41.0",
+    "axios": "^1.6.0"
+  }
+}

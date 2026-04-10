@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webhook Contract & Idempotency Console</title>
+  <style>
+    :root {
+      --bg-primary: #1a1a2e;
+      --bg-secondary: #16213e;
+      --bg-tertiary: #0f3460;
+      --text-primary: #e2e8f0;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --green: #10b981;
+      --red: #ef4444;
+      --yellow: #f59e0b;
+      --blue: #3b82f6;
+      --gray: #6b7280;
+      --border: #2d3748;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: 340px 1fr 300px;
+      height: 100vh;
+      gap: 1px;
+      background: var(--border);
+    }
+
+    @media (max-width: 1200px) {
+      .dashboard {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto auto;
+      }
+    }
+
+    /* Left Rail - Event Queue */
+    .left-rail {
+      background: var(--bg-secondary);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .rail-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+    }
+
+    .event-queue {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    .event-card {
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      border-left: 3px solid var(--gray);
+      transition: all 0.15s ease;
+    }
+
+    .event-card:hover {
+      background: #1a3a5c;
+    }
+
+    .event-card.selected {
+      background: #1a3a5c;
+      box-shadow: 0 0 0 1px var(--blue);
+    }
+
+    .event-card.valid { border-left-color: var(--green); }
+    .event-card.invalid { border-left-color: var(--red); }
+    .event-card.duplicate { border-left-color: var(--yellow); }
+    .event-card.replay { border-left-color: var(--blue); }
+
+    .event-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 6px;
+    }
+
+    .event-id {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .event-type-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--bg-secondary);
+      color: var(--text-secondary);
+    }
+
+    .event-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .event-status {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+      font-size: 10px;
+    }
+
+    .status-tag {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 500;
+    }
+
+    .status-tag.valid { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+    .status-tag.invalid { background: rgba(239, 68, 68, 0.2); color: var(--red); }
+    .status-tag.duplicate { background: rgba(245, 158, 11, 0.2); color: var(--yellow); }
+    .status-tag.queued { background: rgba(59, 130, 246, 0.2); color: var(--blue); }
+
+    /* Center Pane - Event Detail */
+    .center-pane {
+      background: var(--bg-primary);
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.3;
+    }
+
+    .detail-section {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .detail-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 12px;
+    }
+
+    .detail-label {
+      color: var(--text-muted);
+    }
+
+    .detail-value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* Contract Validation */
+    .validation-field {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .validation-field:last-child {
+      border-bottom: none;
+    }
+
+    .validation-icon {
+      font-size: 14px;
+      flex-shrink: 0;
+      width: 16px;
+    }
+
+    .validation-icon.pass { color: var(--green); }
+    .validation-icon.fail { color: var(--red); }
+
+    .validation-content {
+      flex: 1;
+    }
+
+    .validation-field-name {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .validation-error {
+      font-size: 11px;
+      color: var(--red);
+      margin-top: 2px;
+    }
+
+    .validation-result-badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 12px;
+    }
+
+    .validation-result-badge.valid {
+      background: rgba(16, 185, 129, 0.2);
+      color: var(--green);
+    }
+
+    .validation-result-badge.invalid {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--red);
+    }
+
+    /* Idempotency Status */
+    .idempotency-block {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 6px;
+      padding: 12px;
+    }
+
+    .idempotency-header {
+      font-weight: 600;
+      color: var(--yellow);
+      margin-bottom: 8px;
+    }
+
+    .idempotency-result {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(245, 158, 11, 0.2);
+      font-weight: 500;
+      color: var(--green);
+    }
+
+    /* Payload Preview */
+    .payload-preview {
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      padding: 12px;
+      font-size: 11px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    /* Right Rail */
+    .right-rail {
+      background: var(--bg-secondary);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    /* Metrics */
+    .metrics-panel {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .metric-card {
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+
+    .metric-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .metric-value.good { color: var(--green); }
+    .metric-value.warning { color: var(--yellow); }
+    .metric-value.bad { color: var(--red); }
+
+    .metric-sub {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Simulation Buttons */
+    .simulation-panel {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 10px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      margin-bottom: 8px;
+      text-align: left;
+      font-family: inherit;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--blue);
+      color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: #2563eb;
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--bg-secondary);
+      border-color: var(--text-muted);
+    }
+
+    .btn-warning {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--red);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-warning:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-loading {
+      position: relative;
+      padding-left: 32px;
+    }
+
+    .btn-loading::before {
+      content: '';
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 12px;
+      height: 12px;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: translateY(-50%) rotate(360deg); }
+    }
+
+    /* Replay Queue Panel */
+    .replay-panel {
+      padding: 16px;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .replay-queue-size {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .queue-count {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--blue);
+    }
+
+    .queue-age {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .replay-event {
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 8px;
+      border-left: 3px solid var(--blue);
+    }
+
+    .replay-event-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+
+    .replay-event-id {
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .replay-event-age {
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .replay-event-meta {
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: var(--bg-primary);
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard">
+    <!-- Left Rail: Event Queue -->
+    <div class="left-rail">
+      <div class="rail-header">Webhook Events</div>
+      <div class="event-queue" id="eventQueue">
+        <!-- Events will be rendered here -->
+      </div>
+    </div>
+
+    <!-- Center Pane: Event Detail -->
+    <div class="center-pane" id="centerPane">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-state-icon">&#128230;</div>
+        <div>Send a webhook to see results</div>
+      </div>
+      <div id="eventDetail" style="display: none;"></div>
+    </div>
+
+    <!-- Right Rail: Metrics + Controls + Replay -->
+    <div class="right-rail">
+      <!-- Metrics -->
+      <div class="metrics-panel">
+        <div class="panel-title">Metrics</div>
+        <div class="metric-card">
+          <div class="metric-label">Contract Pass Rate</div>
+          <div class="metric-value" id="contractPassRate">--%</div>
+          <div class="metric-sub" id="contractSub">No data yet</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Idempotency Score</div>
+          <div class="metric-value good" id="idempotencyScore">--%</div>
+          <div class="metric-sub" id="idempotencySub">No duplicates yet</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Replay Queue</div>
+          <div class="metric-value" id="replayQueueSize">0</div>
+          <div class="metric-sub" id="replayQueueAge">Queue empty</div>
+        </div>
+      </div>
+
+      <!-- Simulation Buttons -->
+      <div class="simulation-panel">
+        <div class="panel-title">Live Simulation</div>
+        <button class="btn btn-primary" id="btnValid" onclick="simulateValid()">Send Valid Webhook</button>
+        <button class="btn btn-primary" id="btnDuplicate" onclick="simulateDuplicate()">Send Duplicate (3x)</button>
+        <button class="btn btn-primary" id="btnOutOfOrder" onclick="simulateOutOfOrder()">Send Out-of-Order</button>
+        <button class="btn btn-primary" id="btnDropped" onclick="simulateDropped()">Simulate Dropped</button>
+      </div>
+
+      <!-- Control Buttons -->
+      <div class="simulation-panel">
+        <div class="panel-title">Controls</div>
+        <button class="btn btn-secondary" id="btnTests" onclick="runContractTests()">Run Contract Tests</button>
+        <button class="btn btn-secondary" id="btnReport" onclick="generateReport()">Generate Report</button>
+        <button class="btn btn-warning" id="btnReset" onclick="resetDemo()">Reset Demo Data</button>
+      </div>
+
+      <!-- Replay Queue -->
+      <div class="replay-panel">
+        <div class="panel-title">Replay Queue</div>
+        <div class="replay-queue-size">
+          <span class="queue-count" id="replayCount">0</span>
+          <span class="queue-age" id="replayAge">events pending</span>
+        </div>
+        <div id="replayEvents">
+          <!-- Replay events will be rendered here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let events = [];
+    let selectedEventId = null;
+    let contractResults = null;
+    let idempotencyMetrics = null;
+    let replayQueue = null;
+
+    // API Base URL
+    const API_BASE = window.location.origin;
+
+    // Fetch helper
+    async function apiGet(endpoint) {
+      const res = await fetch(`${API_BASE}${endpoint}`);
+      return res.json();
+    }
+
+    async function apiPost(endpoint) {
+      const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST' });
+      return res.json();
+    }
+
+    // Load all data
+    async function loadAllData() {
+      try {
+        const [contract, idempotency, replay] = await Promise.all([
+          apiGet('/api/contract-results'),
+          apiGet('/api/idempotency-metrics'),
+          apiGet('/api/replay-queue')
+        ]);
+
+        contractResults = contract;
+        idempotencyMetrics = idempotency;
+        replayQueue = replay;
+
+        updateMetrics();
+        updateEventQueue();
+        updateReplayPanel();
+
+        if (selectedEventId) {
+          const event = events.find(e => e.id === selectedEventId);
+          if (event) renderEventDetail(event);
+        }
+      } catch (e) {
+        console.error('Failed to load data:', e);
+      }
+    }
+
+    // Update metrics display
+    function updateMetrics() {
+      // Contract Pass Rate
+      const passRate = contractResults?.pass_rate ?? 0;
+      const passRateEl = document.getElementById('contractPassRate');
+      const passRateValue = (passRate * 100).toFixed(1);
+      passRateEl.textContent = `${passRateValue}%`;
+      passRateEl.className = 'metric-value ' + (passRate >= 0.95 ? 'good' : passRate >= 0.8 ? 'warning' : 'bad');
+
+      const valid = contractResults?.contract_valid ?? 0;
+      const invalid = contractResults?.contract_invalid ?? 0;
+      document.getElementById('contractSub').textContent = `${valid} valid, ${invalid} invalid`;
+
+      // Idempotency Score
+      const idemScore = idempotencyMetrics?.idempotency_score ?? 1;
+      const idemScoreEl = document.getElementById('idempotencyScore');
+      idemScoreEl.textContent = `${(idemScore * 100).toFixed(0)}%`;
+      idemScoreEl.className = 'metric-value ' + (idemScore >= 1 ? 'good' : 'warning');
+
+      const dupDetected = idempotencyMetrics?.duplicates_detected ?? 0;
+      const dupSkipped = idempotencyMetrics?.duplicates_correctly_skipped ?? 0;
+      document.getElementById('idempotencySub').textContent = 
+        dupDetected > 0 ? `${dupDetected} duplicates, ${dupSkipped} skipped` : 'No duplicates yet';
+
+      // Replay Queue Size
+      const queueSize = replayQueue?.queue_size ?? 0;
+      document.getElementById('replayQueueSize').textContent = queueSize;
+      document.getElementById('replayQueueSize').className = 'metric-value ' + (queueSize === 0 ? '' : queueSize > 5 ? 'warning' : '');
+
+      const oldestAge = replayQueue?.oldest_event_age_seconds ?? 0;
+      document.getElementById('replayQueueAge').textContent = 
+        queueSize > 0 ? `Oldest: ${formatAge(oldestAge)}` : 'Queue empty';
+    }
+
+    // Update event queue
+    function updateEventQueue() {
+      const queue = document.getElementById('eventQueue');
+      
+      // Build events list from recent duplicates and contract results
+      events = [];
+
+      // Add recent duplicates
+      if (idempotencyMetrics?.recent_duplicates) {
+        idempotencyMetrics.recent_duplicates.forEach(dup => {
+          events.push({
+            id: dup.event_id,
+            type: 'duplicate',
+            contract_status: 'valid',
+            processing_status: 'duplicate',
+            receive_count: dup.received_count,
+            first_processed: dup.first_received,
+            timestamp: dup.last_received
+          });
+        });
+      }
+
+      // Add replay queue events
+      if (replayQueue?.events) {
+        replayQueue.events.forEach(evt => {
+          events.push({
+            id: evt.event_id,
+            type: evt.type,
+            contract_status: 'valid',
+            processing_status: 'queued',
+            retry_count: evt.retry_count,
+            timestamp: evt.queued_at,
+            source: evt.source
+          });
+        });
+      }
+
+      // Add events from contract results
+      if (contractResults?.violations) {
+        contractResults.violations.forEach(v => {
+          if (!events.find(e => e.id === v.webhook_id)) {
+            events.push({
+              id: v.webhook_id,
+              type: 'unknown',
+              contract_status: 'invalid',
+              processing_status: 'rejected',
+              error: v.error,
+              error_field: v.field
+            });
+          }
+        });
+      }
+
+      // Sort: invalid first, then duplicate, then replay, then valid
+      const sortOrder = { invalid: 0, duplicate: 1, queued: 2, processed: 3 };
+      events.sort((a, b) => {
+        const aOrder = sortOrder[a.processing_status] ?? 4;
+        const bOrder = sortOrder[b.processing_status] ?? 4;
+        return aOrder - bOrder;
+      });
+
+      if (events.length === 0) {
+        queue.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">No events yet</div>';
+        return;
+      }
+
+      queue.innerHTML = events.map(evt => {
+        const statusClass = evt.processing_status === 'duplicate' ? 'duplicate' :
+                           evt.processing_status === 'queued' ? 'replay' :
+                           evt.contract_status === 'invalid' ? 'invalid' : 'valid';
+        
+        const selectedClass = evt.id === selectedEventId ? 'selected' : '';
+        
+        return `
+          <div class="event-card ${statusClass} ${selectedClass}" onclick="selectEvent('${evt.id}')">
+            <div class="event-card-header">
+              <span class="event-id">${evt.id}</span>
+              <span class="event-type-badge">${evt.type || 'unknown'}</span>
+            </div>
+            <div class="event-meta">${formatTimestamp(evt.timestamp)}</div>
+            <div class="event-status">
+              <span class="status-tag ${evt.contract_status === 'invalid' ? 'invalid' : 'valid'}">${evt.contract_status}</span>
+              <span class="status-tag ${statusClass}">${evt.processing_status}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Update replay panel
+    function updateReplayPanel() {
+      const countEl = document.getElementById('replayCount');
+      const ageEl = document.getElementById('replayAge');
+      const eventsEl = document.getElementById('replayEvents');
+
+      const queueSize = replayQueue?.queue_size ?? 0;
+      countEl.textContent = queueSize;
+      
+      const oldestAge = replayQueue?.oldest_event_age_seconds ?? 0;
+      ageEl.textContent = queueSize > 0 ? `oldest: ${formatAge(oldestAge)}` : 'events pending';
+
+      if (!replayQueue?.events || replayQueue.events.length === 0) {
+        eventsEl.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; padding: 8px 0;">Queue empty</div>';
+        return;
+      }
+
+      eventsEl.innerHTML = replayQueue.events.map(evt => {
+        const age = Math.floor((Date.now() - new Date(evt.queued_at).getTime()) / 1000);
+        return `
+          <div class="replay-event">
+            <div class="replay-event-header">
+              <span class="replay-event-id">${evt.event_id}</span>
+              <span class="replay-event-age">${formatAge(age)}</span>
+            </div>
+            <div class="replay-event-meta">
+              ${evt.type} | retry #${evt.retry_count} | ${evt.status}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Select event
+    function selectEvent(eventId) {
+      selectedEventId = eventId;
+      const event = events.find(e => e.id === eventId);
+      if (event) {
+        renderEventDetail(event);
+        updateEventQueue();
+      }
+    }
+
+    // Render event detail
+    function renderEventDetail(evt) {
+      document.getElementById('emptyState').style.display = 'none';
+      const detail = document.getElementById('eventDetail');
+      detail.style.display = 'block';
+
+      // Build contract validation fields
+      const validationFields = [
+        { name: 'ID present', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'id', value: evt.id },
+        { name: 'Type valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'type', value: evt.type || 'unknown' },
+        { name: 'Timestamp valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'timestamp', value: evt.timestamp ? 'present' : 'missing' },
+        { name: 'Signature valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'signature', value: 'verified' },
+        { name: 'Timestamp fresh', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'freshness', value: 'within window' }
+      ];
+
+      const validationHTML = validationFields.map(f => `
+        <div class="validation-field">
+          <span class="validation-icon ${f.pass ? 'pass' : 'fail'}">${f.pass ? '&#10003;' : '&#10007;'}</span>
+          <div class="validation-content">
+            <div class="validation-field-name">${f.name}: ${f.value}</div>
+            ${!f.pass ? `<div class="validation-error">${evt.error || 'Validation failed'}</div>` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      // Build idempotency section if duplicate
+      let idempotencyHTML = '';
+      if (evt.processing_status === 'duplicate') {
+        idempotencyHTML = `
+          <div class="detail-section">
+            <div class="detail-section-title">Idempotency Check</div>
+            <div class="idempotency-block">
+              <div class="idempotency-header">Duplicate Detected</div>
+              <div class="detail-row">
+                <span class="detail-label">Event ID</span>
+                <span class="detail-value">${evt.id}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">First processed</span>
+                <span class="detail-value">${formatTimestamp(evt.first_processed)}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Receive count</span>
+                <span class="detail-value">${evt.receive_count || 1}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Processed</span>
+                <span class="detail-value">NO (duplicate)</span>
+              </div>
+              <div class="idempotency-result">Result: SKIPPED (idempotency working)</div>
+            </div>
+          </div>
+        `;
+      }
+
+      // Build replay status if queued
+      let replayHTML = '';
+      if (evt.processing_status === 'queued') {
+        replayHTML = `
+          <div class="detail-section">
+            <div class="detail-section-title">Replay Status</div>
+            <div class="detail-row">
+              <span class="detail-label">Status</span>
+              <span class="detail-value">${evt.status || 'pending'}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Retry count</span>
+              <span class="detail-value">${evt.retry_count ?? 0}</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Source</span>
+              <span class="detail-value">${evt.source || 'unknown'}</span>
+            </div>
+          </div>
+        `;
+      }
+
+      detail.innerHTML = `
+        <div class="detail-section">
+          <div class="detail-section-title">Event Header</div>
+          <div class="detail-row">
+            <span class="detail-label">Event ID</span>
+            <span class="detail-value">${evt.id}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Type</span>
+            <span class="detail-value">${evt.type || 'unknown'}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Timestamp</span>
+            <span class="detail-value">${formatTimestamp(evt.timestamp)}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Contract Status</span>
+            <span class="detail-value">${evt.contract_status}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Processing Status</span>
+            <span class="detail-value">${evt.processing_status}</span>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <div class="detail-section-title">Contract Validation</div>
+          ${validationHTML}
+          <div class="validation-result-badge ${evt.contract_status}">${evt.contract_status.toUpperCase()}</div>
+        </div>
+
+        ${idempotencyHTML}
+        ${replayHTML}
+
+        <div class="detail-section">
+          <div class="detail-section-title">Payload Preview</div>
+          <div class="payload-preview">${JSON.stringify({ id: evt.id, type: evt.type, timestamp: evt.timestamp }, null, 2)}</div>
+        </div>
+      `;
+    }
+
+    // Simulation handlers
+    async function simulateValid() {
+      setButtonLoading('btnValid', true);
+      try {
+        await apiPost('/api/simulate/valid');
+        await loadAllData();
+      } catch (e) {
+        console.error('Error:', e);
+      }
+      setButtonLoading('btnValid', false);
+    }
+
+    async function simulateDuplicate() {
+      setButtonLoading('btnDuplicate', true);
+      try {
+        const result = await apiPost('/api/simulate/duplicate');
+        await loadAllData();
+      } catch (e) {
+        console.error('Error:', e);
+      }
+      setButtonLoading('btnDuplicate', false);
+    }
+
+    async function simulateOutOfOrder() {
+      setButtonLoading('btnOutOfOrder', true);
+      try {
+        await apiPost('/api/simulate/out-of-order');
+        await loadAllData();
+      } catch (e) {
+        console.error('Error:', e);
+      }
+      setButtonLoading('btnOutOfOrder', false);
+    }
+
+    async function simulateDropped() {
+      setButtonLoading('btnDropped', true);
+      try {
+        await apiPost('/api/simulate/dropped');
+        await loadAllData();
+      } catch (e) {
+        console.error('Error:', e);
+      }
+      setButtonLoading('btnDropped', false);
+    }
+
+    async function runContractTests() {
+      setButtonLoading('btnTests', true);
+      try {
+        await apiPost('/api/run-contract-tests');
+        await loadAllData();
+      } catch (e) {
+        console.error('Error:', e);
+      }
+      setButtonLoading('btnTests', false);
+    }
+
+    async function generateReport() {
+      setButtonLoading('btnReport', true);
+      try {
+        await apiPost('/api/generate-report');
+        await loadAllData();
+      } catch (e) {
+        console.error('Error:', e);
+      }
+      setButtonLoading('btnReport', false);
+    }
+
+    async function resetDemo() {
+      setButtonLoading('btnReset', true);
+      try {
+        await apiPost('/api/reset');
+        selectedEventId = null;
+        document.getElementById('emptyState').style.display = 'flex';
+        document.getElementById('eventDetail').style.display = 'none';
+        await loadAllData();
+      } catch (e) {
+        console.error('Error:', e);
+      }
+      setButtonLoading('btnReset', false);
+    }
+
+    // Helper: Set button loading state
+    function setButtonLoading(btnId, loading) {
+      const btn = document.getElementById(btnId);
+      if (loading) {
+        btn.disabled = true;
+        btn.classList.add('btn-loading');
+      } else {
+        btn.disabled = false;
+        btn.classList.remove('btn-loading');
+      }
+    }
+
+    // Helper: Format timestamp
+    function formatTimestamp(ts) {
+      if (!ts) return 'N/A';
+      try {
+        return new Date(ts).toLocaleString();
+      } catch {
+        return ts;
+      }
+    }
+
+    // Helper: Format age
+    function formatAge(seconds) {
+      if (seconds < 60) return `${seconds}s`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+      return `${Math.floor(seconds / 3600)}h`;
+    }
+
+    // Initialize
+    loadAllData();
+    // Auto-refresh every 5 seconds
+    setInterval(loadAllData, 5000);
+  </script>
+</body>
+</html>

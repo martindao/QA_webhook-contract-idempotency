@@ -1,0 +1,51 @@
+{
+  "validEvents": [
+    {
+      "id": "evt_001",
+      "type": "payment.succeeded",
+      "timestamp": "2026-04-10T10:00:00Z",
+      "data": {
+        "amount": 9900,
+        "currency": "USD",
+        "customer_id": "cus_abc123"
+      }
+    },
+    {
+      "id": "evt_002",
+      "type": "payment.failed",
+      "timestamp": "2026-04-10T10:01:00Z",
+      "data": {
+        "amount": 5000,
+        "currency": "USD",
+        "error_code": "insufficient_funds"
+      }
+    },
+    {
+      "id": "evt_003",
+      "type": "order.created",
+      "timestamp": "2026-04-10T10:02:00Z",
+      "data": {
+        "order_id": "ord_xyz789",
+        "items": 3,
+        "total": 14999
+      }
+    },
+    {
+      "id": "evt_004",
+      "type": "order.shipped",
+      "timestamp": "2026-04-10T10:03:00Z",
+      "data": {
+        "order_id": "ord_xyz789",
+        "tracking_number": "TRACK123456"
+      }
+    }
+  ],
+  "eventsWithTimestampDrift": [
+    {
+      "id": "evt_old_001",
+      "type": "payment.succeeded",
+      "timestamp": "2026-04-09T10:00:00Z",
+      "data": { "amount": 1000 }
+    }
+  ]
+}
