@@ -45,20 +45,27 @@ Webhook integrations are fragile. Events drop, duplicate, arrive late, or come o
 
 ## Demo Scenarios
 
-### 1. Lost Events / No Replay
-Simulates Ghost-style blog post loss where webhooks timeout and events vanish. The replay queue captures dropped events for manual recovery.
+Use the **Live Simulation** buttons in the support console to test each scenario:
 
-**Run**: `POST /api/simulate/dropped`
+### 1. Valid Webhook
+Sends a properly signed webhook through the full validation pipeline. Confirms contract validation, signature verification, and processing.
 
-### 2. Out-of-Order Delivery
-Simulates FedEx-style tracking where events arrive in wrong sequence. The ordering handler buffers and replays events in correct order.
+**Button**: `Send Valid Webhook`
 
-**Run**: `POST /api/simulate/out-of-order`
+### 2. Duplicate Events / Idempotency
+Sends the same event 3 times to test idempotency. The idempotency store ensures exactly-once processing.
 
-### 3. Duplicate Events / Idempotency
-Simulates PagerDuty-style retry storms where the same event arrives multiple times. The idempotency store ensures exactly-once processing.
+**Button**: `Send Duplicate (3x)`
 
-**Run**: `POST /api/simulate/duplicate`
+### 3. Out-of-Order Delivery
+Sends events B then A to test ordering. The ordering handler buffers and processes events in correct sequence.
+
+**Button**: `Send Out-of-Order`
+
+### 4. Dropped Event
+Simulates a timeout/dropped webhook. The event lands in the replay queue for manual recovery.
+
+**Button**: `Simulate Dropped`
 
 ## How to Run Locally
 
@@ -82,12 +89,12 @@ open http://localhost:3003
 2. Consumer validates and processes on port 3002
 3. Support Console shows metrics on port 3003
 4. Runtime files appear in `runtime/` directory
-5. Reports generate in `reports/` directory
+5. Reports generate in `generated-reports/` directory
 
 ### Reset Between Demos
 ```bash
 # Clear all runtime state
-rm -rf runtime/*.json
+npm run reset
 ```
 
 ## How to Test
@@ -113,9 +120,12 @@ The test suite validates:
 - **Native Node.js HTTP**: No Express dependency, uses built-in `http` module
 - **HMAC-SHA256 Signatures**: Cryptographic verification of webhook authenticity
 - **File-Backed Persistence**: No database required, JSON files for all state
-- **30+ Tests**: Comprehensive coverage with Vitest
+- **138 Tests**: Comprehensive coverage with Vitest
 - **Field-by-Field Validation UI**: See exactly which fields failed contract checks
 - **Real-Time Metrics**: Live dashboard showing idempotency scores and replay queue
+- **Simulation Buttons**: One-click scenarios for valid, duplicate, out-of-order, and dropped events
+- **Auto-Refresh**: Dashboard updates every 3 seconds with user interaction awareness
+- **Toast Notifications**: Visual feedback for all simulation actions
 
 ## Tech Stack
 
@@ -142,14 +152,14 @@ The test suite validates:
 │   └── server.js
 ├── flake-control-plane/    # Report generation
 │   └── report-generator.js
-├── runtime/                # File-backed state
+├── runtime/ # File-backed state
 │   ├── contract-results.json
 │   ├── idempotency-store.json
 │   ├── event-ordering.json
 │   └── replay-queue.json
-├── reports/                # Generated reports
+├── generated-reports/ # Generated reports
 │   └── sample-contract-test-report.md
-├── tests/                  # Test suites
+├── tests/ # Test suites
 │   ├── contract/
 │   ├── idempotency/
 │   └── failure-modes/
@@ -161,7 +171,7 @@ The test suite validates:
 
 ## Sample Report
 
-See [reports/sample-contract-test-report.md](reports/sample-contract-test-report.md) for an example contract test report showing:
+See [generated-reports/sample-contract-test-report.md](generated-reports/sample-contract-test-report.md) for an example contract test report showing:
 - 96.1% contract validity rate
 - 12 duplicate events detected (100% deduplicated)
 - 3 events in replay queue

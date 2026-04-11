@@ -74,8 +74,48 @@ async function resetState() {
   return httpRequest('POST', CONSOLE_PORT, '/api/reset', '');
 }
 
+/**
+ * Helper: Wait for server to be ready with health check
+ */
+async function waitForServer(port, healthPath, maxAttempts = 10, delayMs = 500) {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      await new Promise((resolve, reject) => {
+        const req = http.request({
+          method: 'GET',
+          hostname: 'localhost',
+          port,
+          path: healthPath,
+          timeout: 1000
+        }, (res) => {
+          if (res.statusCode === 200) {
+            resolve();
+          } else {
+            reject(new Error(`Health check returned ${res.statusCode}`));
+          }
+        });
+        req.on('error', reject);
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Health check timeout'));
+        });
+        req.end();
+      });
+      return true; // Server is ready
+    } catch (e) {
+      if (i < maxAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+  return false; // Server not ready after all attempts
+}
+
 describe('Duplicate Detection Integration', () => {
   beforeAll(async () => {
+    // Wait for any previous test servers to fully terminate
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     // Start consumer server
     consumerProcess = spawn('node', [
       path.join(process.cwd(), 'webhook-consumer', 'src', 'webhook-handler.js')
@@ -86,16 +126,32 @@ describe('Duplicate Detection Integration', () => {
       path.join(process.cwd(), 'support-console', 'server.js')
     ], { stdio: 'pipe' });
 
-    // Wait for servers to start
-    await new Promise(resolve => setTimeout(resolve, 2000));
-  }, 10000);
+    // Wait for both servers to be ready with health checks
+    // Consumer has /health, Console has /api/health
+    const consumerReady = await waitForServer(CONSUMER_PORT, '/health', 15, 500);
+    const consoleReady = await waitForServer(CONSOLE_PORT, '/api/health', 15, 500);
 
-  afterAll(() => {
+    if (!consumerReady || !consoleReady) {
+      throw new Error(`Servers not ready: consumer=${consumerReady}, console=${consoleReady}`);
+    }
+  }, 15000);
+
+  afterAll(async () => {
     if (consumerProcess) {
       consumerProcess.kill();
+      // Wait for process to fully terminate
+      await new Promise(resolve => {
+        consumerProcess.on('exit', resolve);
+        setTimeout(resolve, 1000); // Fallback timeout
+      });
     }
     if (consoleProcess) {
       consoleProcess.kill();
+      // Wait for process to fully terminate
+      await new Promise(resolve => {
+        consoleProcess.on('exit', resolve);
+        setTimeout(resolve, 1000); // Fallback timeout
+      });
     }
   });
 

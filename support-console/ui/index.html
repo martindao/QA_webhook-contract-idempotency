@@ -614,8 +614,27 @@ transform: scale(0.98);
 }
 
 .sim-btn.loading {
-opacity: 0.7;
-cursor: wait;
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.sim-btn .spinner {
+  display: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-subtle);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.5rem;
+}
+
+.sim-btn.loading .spinner {
+  display: inline-block;
+}
+
+.sim-btn.loading .sim-btn-icon {
+  display: none;
 }
 
 .sim-btn-icon {
@@ -657,8 +676,93 @@ font-family: var(--font-sans);
 }
 
 .reset-btn:hover {
-border-color: var(--status-invalid);
-color: var(--status-invalid);
+  border-color: var(--status-invalid);
+  color: var(--status-invalid);
+}
+
+.reset-btn.loading {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+/* Toast Notification */
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.toast {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  animation: toastSlideIn 0.3s ease-out;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.toast.success {
+  border-color: var(--status-valid);
+}
+
+.toast.success .toast-icon {
+  color: var(--status-valid);
+}
+
+.toast.fade-out {
+  animation: toastFadeOut 0.3s ease-out forwards;
+}
+
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toastFadeOut {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(100%); }
+}
+
+/* Event highlight animation */
+.event-card.highlight {
+  animation: highlightPulse 1.5s ease-out;
+}
+
+@keyframes highlightPulse {
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.3); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+}
+
+/* Refresh indicator */
+.refresh-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-valid);
+  margin-right: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.refresh-indicator.active {
+  opacity: 1;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 /* Replay Queue Panel */
@@ -771,6 +875,7 @@ border-top: 1px solid var(--border-subtle);
 </style>
 </head>
 <body>
+<div class="toast-container" id="toastContainer"></div>
 <header class="app-header">
 <div class="app-header-left">
 <div class="app-logo">WH</div>
@@ -780,7 +885,7 @@ border-top: 1px solid var(--border-subtle);
 </div>
 </div>
 <div class="app-header-right">
-<span class="header-badge" id="event-count-badge">0 events</span>
+<span class="header-badge" id="event-count-badge"><span class="refresh-indicator" id="refreshIndicator"></span>0 events</span>
 <span class="header-badge" id="contract-status-badge">Contract: —</span>
 </div>
 </header>
@@ -838,6 +943,7 @@ border-top: 1px solid var(--border-subtle);
 <div class="panel-title">Live Simulation</div>
 <div class="sim-controls">
 <button class="sim-btn" id="btnValid" onclick="simulateValid()">
+<span class="spinner"></span>
 <svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
 <polyline points="22 4 12 14.01 9 11.01"/>
@@ -846,6 +952,7 @@ border-top: 1px solid var(--border-subtle);
 <span class="sim-btn-badge valid">VALID</span>
 </button>
 <button class="sim-btn" id="btnDuplicate" onclick="simulateDuplicate()">
+<span class="spinner"></span>
 <svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
@@ -854,6 +961,7 @@ border-top: 1px solid var(--border-subtle);
 <span class="sim-btn-badge duplicate">DUP</span>
 </button>
 <button class="sim-btn" id="btnOutOfOrder" onclick="simulateOutOfOrder()">
+<span class="spinner"></span>
 <svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 <line x1="8" y1="6" x2="21" y2="6"/>
 <line x1="8" y1="12" x2="21" y2="12"/>
@@ -866,6 +974,7 @@ border-top: 1px solid var(--border-subtle);
 <span class="sim-btn-badge queued">SEQ</span>
 </button>
 <button class="sim-btn" id="btnDropped" onclick="simulateDropped()">
+<span class="spinner"></span>
 <svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 <circle cx="12" cy="12" r="10"/>
 <line x1="15" y1="9" x2="9" y2="15"/>
@@ -882,6 +991,7 @@ border-top: 1px solid var(--border-subtle);
 <div class="panel-title">Controls</div>
 <div class="sim-controls">
 <button class="sim-btn" id="btnTests" onclick="runContractTests()">
+<span class="spinner"></span>
 <svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
 <polyline points="14 2 14 8 20 8"/>
@@ -892,6 +1002,7 @@ border-top: 1px solid var(--border-subtle);
 <span class="sim-btn-text">Run Contract Tests</span>
 </button>
 <button class="sim-btn" id="btnReport" onclick="generateReport()">
+<span class="spinner"></span>
 <svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
 <polyline points="14 2 14 8 20 8"/>
@@ -925,33 +1036,49 @@ let selectedEventId = null;
 let contractResults = null;
 let idempotencyMetrics = null;
 let replayQueue = null;
+let eventOrdering = null;
+let isRefreshing = false;
+let userInteracting = false;
+let pendingRefresh = false;
 
 // API Base URL
 const API_BASE = window.location.origin;
 
 // Fetch helper
 async function apiGet(endpoint) {
-const res = await fetch(`${API_BASE}${endpoint}`);
-return res.json();
+  const res = await fetch(`${API_BASE}${endpoint}`);
+  return res.json();
 }
 
 async function apiPost(endpoint) {
-const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST' });
-return res.json();
+  const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST' });
+  return res.json();
 }
 
 // Load all data
 async function loadAllData() {
+// Don't refresh if user is interacting
+if (userInteracting) {
+pendingRefresh = true;
+return;
+}
+
+isRefreshing = true;
+const indicator = document.getElementById('refreshIndicator');
+if (indicator) indicator.classList.add('active');
+
 try {
-const [contract, idempotency, replay] = await Promise.all([
+const [contract, idempotency, replay, ordering] = await Promise.all([
 apiGet('/api/contract-results'),
 apiGet('/api/idempotency-metrics'),
-apiGet('/api/replay-queue')
+apiGet('/api/replay-queue'),
+apiGet('/api/event-ordering')
 ]);
 
 contractResults = contract;
 idempotencyMetrics = idempotency;
 replayQueue = replay;
+eventOrdering = ordering;
 
 updateMetrics();
 updateEventQueue();
@@ -964,28 +1091,35 @@ if (event) renderEventDetail(event);
 }
 } catch (e) {
 console.error('Failed to load data:', e);
+} finally {
+isRefreshing = false;
+if (indicator) indicator.classList.remove('active');
 }
 }
 
 // Update header badges
 function updateHeaderBadges() {
 const totalEvents = events.length;
-document.getElementById('event-count-badge').textContent = `${totalEvents} event${totalEvents !== 1 ? 's' : ''}`;
+const badge = document.getElementById('event-count-badge');
+const indicator = document.getElementById('refreshIndicator');
+badge.innerHTML = '';
+if (indicator) badge.appendChild(indicator);
+badge.appendChild(document.createTextNode(`${totalEvents} event${totalEvents !== 1 ? 's' : ''}`));
 
 const passRate = contractResults?.pass_rate ?? 0;
-const badge = document.getElementById('contract-status-badge');
+const contractBadge = document.getElementById('contract-status-badge');
 if (passRate >= 0.95) {
-badge.textContent = 'Contract: ✓ Healthy';
-badge.style.color = 'var(--status-valid)';
+contractBadge.textContent = 'Contract: ✓ Healthy';
+contractBadge.style.color = 'var(--status-valid)';
 } else if (passRate >= 0.8) {
-badge.textContent = 'Contract: ⚠ Degraded';
-badge.style.color = 'var(--status-duplicate)';
+contractBadge.textContent = 'Contract: ⚠ Degraded';
+contractBadge.style.color = 'var(--status-duplicate)';
 } else if (passRate > 0) {
-badge.textContent = 'Contract: ✗ Failing';
-badge.style.color = 'var(--status-invalid)';
+contractBadge.textContent = 'Contract: ✗ Failing';
+contractBadge.style.color = 'var(--status-invalid)';
 } else {
-badge.textContent = 'Contract: —';
-badge.style.color = 'var(--text-muted)';
+contractBadge.textContent = 'Contract: —';
+contractBadge.style.color = 'var(--text-muted)';
 }
 }
 
@@ -1210,26 +1344,33 @@ function renderEventDetail(evt) {
   // Build contract validation fields with actual validation_details
   let validationHTML = '';
   if (validationDetails) {
+    // Check for errors array (new format from ARTIFACT_SCHEMA.md)
+    const errors = validationDetails.errors || [];
+    const errorMap = {};
+    errors.forEach(err => {
+      errorMap[err.field] = err.message;
+    });
+
     const fields = [
-      { key: 'id_present', name: 'ID present', value: evt.id },
-      { key: 'type_valid', name: 'Type valid', value: evt.type || 'unknown', errorKey: 'type_error' },
-      { key: 'timestamp_valid', name: 'Timestamp valid', value: evt.timestamp ? 'present' : 'missing', errorKey: 'timestamp_error' },
-      { key: 'signature_valid', name: 'Signature valid', value: 'verified', errorKey: 'signature_error' },
-      { key: 'timestamp_fresh', name: 'Timestamp fresh', value: 'within window', errorKey: 'timestamp_fresh_error' }
+      { key: 'id_present', name: 'ID present', value: evt.id, errorField: 'id' },
+      { key: 'type_valid', name: 'Type valid', value: evt.type || 'unknown', errorField: 'type' },
+      { key: 'timestamp_valid', name: 'Timestamp valid', value: evt.timestamp ? 'present' : 'missing', errorField: 'timestamp' },
+      { key: 'signature_valid', name: 'Signature valid', value: 'verified', errorField: 'signature' },
+      { key: 'timestamp_fresh', name: 'Timestamp fresh', value: 'within window', errorField: 'freshness' }
     ];
 
     validationHTML = fields.map(f => {
       const pass = validationDetails[f.key] !== false;
-      const error = !pass && validationDetails[f.errorKey] ? validationDetails[f.errorKey] : null;
+      const errorMsg = errorMap[f.errorField] || validationDetails[f.key + '_error'] || null;
       return `
-        <div class="validation-field">
-          <span class="validation-icon ${pass ? 'pass' : 'fail'}">${pass ? '✓' : '✗'}</span>
-          <div class="validation-content">
-            <div class="validation-field-name">${f.name}: <span class="mono">${f.value}</span></div>
-            ${error ? `<div class="validation-error">${error}</div>` : ''}
-          </div>
+      <div class="validation-field">
+        <span class="validation-icon ${pass ? 'pass' : 'fail'}">${pass ? '✓' : '✗'}</span>
+        <div class="validation-content">
+          <div class="validation-field-name">${f.name}: <span class="mono">${f.value}</span></div>
+          ${!pass && errorMsg ? `<div class="validation-error">${errorMsg}</div>` : ''}
         </div>
-      `;
+      </div>
+    `;
     }).join('');
   } else {
     // Fallback to basic validation display
@@ -1286,7 +1427,7 @@ function renderEventDetail(evt) {
             <span class="detail-label">Payload hash</span>
             <span class="detail-value mono" style="font-size: 0.6875rem;">${idemData.payload_hash.substring(0, 24)}...</span>
           </div>
-          ` : ''}
+        ` : ''}
           <div class="idempotency-result">✓ Result: SKIPPED (idempotency working)</div>
         </div>
       </div>
@@ -1323,13 +1464,13 @@ function renderEventDetail(evt) {
             <span class="detail-label">Last error</span>
             <span class="detail-value" style="color: var(--status-invalid);">${replayData.last_error}</span>
           </div>
-          ` : ''}
+        ` : ''}
           ${replayData?.next_retry_at ? `
           <div class="detail-row">
             <span class="detail-label">Next retry</span>
             <span class="detail-value mono">${formatTimestamp(replayData.next_retry_at)}</span>
           </div>
-          ` : ''}
+        ` : ''}
           <div class="detail-row">
             <span class="detail-label">Source</span>
             <span class="detail-value">${evt.source || replayData?.source || 'unknown'}</span>
@@ -1339,49 +1480,74 @@ function renderEventDetail(evt) {
     `;
   }
 
-  // Build ordering evidence if out-of-order event
+  // Build ordering evidence from event-ordering.json
   let orderingHTML = '';
-  if (evt.sequence || evt.held_until) {
-    orderingHTML = `
-      <div class="detail-section">
-        <div class="detail-section-title">Ordering Evidence</div>
-        <div class="ordering-block">
-          <div class="detail-row">
-            <span class="detail-label">Sequence</span>
-            <span class="detail-value">#${evt.sequence}</span>
+  if (eventOrdering?.ordering_events) {
+    // Find if this event is in any ordering_events entry
+    for (const entity of eventOrdering.ordering_events) {
+      const eventEntry = entity.events?.find(e => e.event_id === evt.id);
+      const pendingEntry = entity.pending?.find(e => e.event_id === evt.id);
+      
+      if (eventEntry || pendingEntry) {
+        const entry = eventEntry || pendingEntry;
+        orderingHTML = `
+          <div class="detail-section">
+            <div class="detail-section-title">Ordering Evidence</div>
+            <div class="ordering-block">
+              <div class="detail-row">
+                <span class="detail-label">Entity ID</span>
+                <span class="detail-value mono">${entity.entity_id}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Sequence</span>
+                <span class="detail-value">#${entry.sequence}</span>
+              </div>
+              ${entry.held_until ? `
+              <div class="detail-row">
+                <span class="detail-label">Held until</span>
+                <span class="detail-value mono">${formatTimestamp(entry.held_until)}</span>
+              </div>
+            ` : ''}
+              ${entry.processed_at ? `
+              <div class="detail-row">
+                <span class="detail-label">Processed at</span>
+                <span class="detail-value mono">${formatTimestamp(entry.processed_at)}</span>
+              </div>
+            ` : ''}
+              ${entity.processing_order ? `
+              <div class="detail-row">
+                <span class="detail-label">Processing order</span>
+                <span class="detail-value mono">${entity.processing_order.join(' → ')}</span>
+              </div>
+            ` : ''}
+              <div class="detail-row">
+                <span class="detail-label">Order maintained</span>
+                <span class="detail-value" style="color: var(--status-valid);">${entity.correct_order_maintained ? '✓ Yes' : '✗ No'}</span>
+              </div>
+              <div class="ordering-result">✓ Correct order maintained</div>
+            </div>
           </div>
-          ${evt.held_until ? `
-          <div class="detail-row">
-            <span class="detail-label">Held until</span>
-            <span class="detail-value mono">${formatTimestamp(evt.held_until)}</span>
-          </div>
-          ` : ''}
-          ${evt.processed_at ? `
-          <div class="detail-row">
-            <span class="detail-label">Processed at</span>
-            <span class="detail-value mono">${formatTimestamp(evt.processed_at)}</span>
-          </div>
-          ` : ''}
-          ${evt.processing_order ? `
-          <div class="detail-row">
-            <span class="detail-label">Processing order</span>
-            <span class="detail-value mono">${evt.processing_order.join(' → ')}</span>
-          </div>
-          ` : ''}
-          <div class="ordering-result">✓ Correct order maintained</div>
-        </div>
-      </div>
-    `;
+        `;
+        break;
+      }
+    }
   }
 
-  // Build payload preview
-  const payloadData = evt.payload || {
-    id: evt.id,
-    type: evt.type,
-    timestamp: evt.timestamp,
-    source: evt.source,
-    data: evt.data || {}
-  };
+  // Build payload preview - use payload from replay queue if available
+  let payloadData = evt.payload;
+  if (!payloadData && evt.processing_status === 'queued') {
+    const replayData = replayQueue?.events?.find(e => e.event_id === evt.id);
+    payloadData = replayData?.payload;
+  }
+  if (!payloadData) {
+    payloadData = {
+      id: evt.id,
+      type: evt.type,
+      timestamp: evt.timestamp,
+      source: evt.source,
+      data: evt.data || {}
+    };
+  }
 
   // Build artifact links
   const artifactLinksHTML = `
@@ -1391,6 +1557,7 @@ function renderEventDetail(evt) {
         <a href="/api/contract-results" target="_blank" class="artifact-link">contract-results.json</a>
         <a href="/api/idempotency-metrics" target="_blank" class="artifact-link">idempotency-store.json</a>
         <a href="/api/replay-queue" target="_blank" class="artifact-link">replay-queue.json</a>
+        <a href="/api/event-ordering" target="_blank" class="artifact-link">event-ordering.json</a>
         <a href="/api/reports" target="_blank" class="artifact-link">reports</a>
       </div>
     </div>
@@ -1441,17 +1608,22 @@ function renderEventDetail(evt) {
     </div>
 
     ${artifactLinksHTML}
-  `;
+`;
 }
 
 // Simulation handlers
 async function simulateValid() {
 setButtonLoading('btnValid', true);
 try {
-await apiPost('/api/simulate/valid');
+const result = await apiPost('/api/simulate/valid');
 await loadAllData();
+showToast('Valid webhook sent successfully', 'success');
+if (result.event_id) {
+setTimeout(() => selectAndHighlightEvent(result.event_id), 100);
+}
 } catch (e) {
 console.error('Error:', e);
+showToast('Failed to send webhook', 'error');
 }
 setButtonLoading('btnValid', false);
 }
@@ -1461,8 +1633,13 @@ setButtonLoading('btnDuplicate', true);
 try {
 const result = await apiPost('/api/simulate/duplicate');
 await loadAllData();
+showToast('3 duplicate webhooks sent - idempotency active', 'success');
+if (result.event_id) {
+setTimeout(() => selectAndHighlightEvent(result.event_id), 100);
+}
 } catch (e) {
 console.error('Error:', e);
+showToast('Failed to send duplicates', 'error');
 }
 setButtonLoading('btnDuplicate', false);
 }
@@ -1470,10 +1647,15 @@ setButtonLoading('btnDuplicate', false);
 async function simulateOutOfOrder() {
 setButtonLoading('btnOutOfOrder', true);
 try {
-await apiPost('/api/simulate/out-of-order');
+const result = await apiPost('/api/simulate/out-of-order');
 await loadAllData();
+showToast('Out-of-order events sent - sequencing active', 'success');
+if (result.event_id) {
+setTimeout(() => selectAndHighlightEvent(result.event_id), 100);
+}
 } catch (e) {
 console.error('Error:', e);
+showToast('Failed to send out-of-order events', 'error');
 }
 setButtonLoading('btnOutOfOrder', false);
 }
@@ -1481,10 +1663,15 @@ setButtonLoading('btnOutOfOrder', false);
 async function simulateDropped() {
 setButtonLoading('btnDropped', true);
 try {
-await apiPost('/api/simulate/dropped');
+const result = await apiPost('/api/simulate/dropped');
 await loadAllData();
+showToast('Dropped event added to replay queue', 'success');
+if (result.event_id) {
+setTimeout(() => selectAndHighlightEvent(result.event_id), 100);
+}
 } catch (e) {
 console.error('Error:', e);
+showToast('Failed to simulate dropped event', 'error');
 }
 setButtonLoading('btnDropped', false);
 }
@@ -1494,8 +1681,10 @@ setButtonLoading('btnTests', true);
 try {
 await apiPost('/api/run-contract-tests');
 await loadAllData();
+showToast('Contract tests completed', 'success');
 } catch (e) {
 console.error('Error:', e);
+showToast('Failed to run contract tests', 'error');
 }
 setButtonLoading('btnTests', false);
 }
@@ -1505,14 +1694,15 @@ setButtonLoading('btnReport', true);
 try {
 await apiPost('/api/generate-report');
 await loadAllData();
+showToast('Report generated successfully', 'success');
 } catch (e) {
 console.error('Error:', e);
+showToast('Failed to generate report', 'error');
 }
 setButtonLoading('btnReport', false);
 }
 
 async function resetDemo() {
-if (!confirm('Clear all events and reset demo state?')) return;
 setButtonLoading('btnReset', true);
 try {
 await apiPost('/api/reset');
@@ -1520,8 +1710,10 @@ selectedEventId = null;
 document.getElementById('emptyState').style.display = 'flex';
 document.getElementById('eventDetail').style.display = 'none';
 await loadAllData();
+showToast('Demo data cleared', 'success');
 } catch (e) {
 console.error('Error:', e);
+showToast('Failed to reset demo', 'error');
 }
 setButtonLoading('btnReset', false);
 }
@@ -1537,6 +1729,61 @@ btn.disabled = false;
 btn.classList.remove('loading');
 }
 }
+
+// Helper: Show toast notification
+function showToast(message, type = 'success') {
+const container = document.getElementById('toastContainer');
+const toast = document.createElement('div');
+toast.className = `toast ${type}`;
+toast.innerHTML = `
+<span class="toast-icon">${type === 'success' ? '✓' : '✗'}</span>
+<span class="toast-message">${message}</span>
+`;
+container.appendChild(toast);
+
+// Remove after 3 seconds
+setTimeout(() => {
+toast.classList.add('fade-out');
+setTimeout(() => toast.remove(), 300);
+}, 3000);
+}
+
+// Helper: Select and highlight event
+function selectAndHighlightEvent(eventId) {
+selectEvent(eventId);
+// Add highlight animation
+setTimeout(() => {
+const card = document.querySelector(`.event-card[onclick*="${eventId}"]`);
+if (card) {
+card.classList.add('highlight');
+setTimeout(() => card.classList.remove('highlight'), 1500);
+}
+}, 50);
+}
+
+// Track user interactions to prevent refresh interruption
+document.addEventListener('mousedown', () => { userInteracting = true; });
+document.addEventListener('mouseup', () => {
+userInteracting = false;
+if (pendingRefresh) {
+pendingRefresh = false;
+loadAllData();
+}
+});
+document.addEventListener('keydown', (e) => {
+if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+userInteracting = true;
+}
+});
+document.addEventListener('keyup', (e) => {
+if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+userInteracting = false;
+if (pendingRefresh) {
+pendingRefresh = false;
+loadAllData();
+}
+}
+});
 
 // Helper: Format timestamp
 function formatTimestamp(ts) {
@@ -1567,8 +1814,12 @@ return `${Math.floor(seconds / 3600)}h`;
 
 // Initialize
 loadAllData();
-// Auto-refresh every 3 seconds (matching repo-01)
-setInterval(loadAllData, 3000);
+// Auto-refresh every 3 seconds with user interaction awareness
+setInterval(() => {
+if (!userInteracting && !isRefreshing) {
+loadAllData();
+}
+}, 3000);
 </script>
 </body>
 </html>

@@ -15,35 +15,29 @@ This should start:
 - Webhook consumer on port 3002
 - Support console on port 3003
 
-## 2. Unit Tests
+## 2. Run All Tests
 
 ```bash
-npm test
+npm run test:all
 ```
 
-Target: 15+ unit tests passing.
+Target: 138 tests passing (14 test files).
 
-Tests should cover:
-- Contract validator (field validation)
-- Signature verification (HMAC-SHA256)
-- Idempotency store (add/check/mark)
+Tests cover:
+- Contract validation (field validation, signature verification)
+- Idempotency store (add/check/mark, payload hash)
 - Replay queue (add/retry/age)
 - Out-of-order handling
+- Failure modes (dropped events, timestamp drift)
+- Integration flows (webhook receive → validate → process)
 
-## 3. Integration Tests
+### Run Specific Test Suites
 
 ```bash
-npm run test:integration
+npm run test:contract    # Contract validation tests
+npm run test:idempotency # Idempotency and replay tests
+npm run test:failures    # Failure mode tests
 ```
-
-Target: 15+ integration tests passing.
-
-Tests should cover:
-- Full webhook receive → validate → process flow
-- Duplicate detection and skipping
-- Out-of-order event handling
-- Dropped event → replay queue flow
-- Contract test suite execution
 
 ## 4. Manual UI Verification
 
@@ -62,23 +56,19 @@ Open `http://localhost:3003`
 ### Scenario B — Duplicate Webhook
 
 1. Click `Reset Demo Data`
-2. Click `Send Duplicate Webhook (3x)`
-3. Confirm 3 events appear in queue
-4. Click on first event
+2. Click `Send Duplicate (3x)`
+3. Confirm 1 event appears in the event list (UI collapses duplicates by event ID)
+4. Click on the event
 5. Confirm:
-   - Processing status: "processed"
-   - Receive count: 3
-   - Duplicate count: 2
-6. Click on second/third events
-7. Confirm:
-   - Processing status: "skipped (duplicate)"
-   - First processed timestamp shown
-8. Confirm idempotency score shows 100%
+- Processing status: "processed"
+- Receive count: 3
+- Duplicate count: 2
+6. Confirm idempotency score shows 100%
 
 ### Scenario C — Out-of-Order Events
 
 1. Click `Reset Demo Data`
-2. Click `Send Out-of-Order Events`
+2. Click `Send Out-of-Order`
 3. Confirm 2 events appear
 4. Click on events
 5. Confirm:
@@ -90,7 +80,7 @@ Open `http://localhost:3003`
 ### Scenario D — Dropped Event
 
 1. Click `Reset Demo Data`
-2. Click `Simulate Dropped Event`
+2. Click `Simulate Dropped`
 3. Confirm event appears in replay queue (right rail)
 4. Confirm event shows:
    - Status: "pending" or "retrying"
@@ -132,7 +122,7 @@ This is a mandatory check:
 4. Confirm replay queue is empty
 5. Click `Send Valid Webhook`
 6. Confirm NEW event appears
-7. Click `Send Duplicate Webhook (3x)`
+7. Click `Send Duplicate (3x)`
 8. Confirm NEW duplicate detection works
 
 If this fails, the repo is not ready.

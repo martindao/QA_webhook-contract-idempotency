@@ -59,10 +59,10 @@ Must include:
 - **Idempotency Score** — should always show 100%
 - **Replay Queue Size** — with age indicator
 - **Live Simulation buttons:**
-  - Send Valid Webhook
-  - Send Duplicate Webhook (3x)
-  - Send Out-of-Order Events
-  - Simulate Dropped Event
+ - Send Valid Webhook
+ - Send Duplicate (3x)
+ - Send Out-of-Order
+ - Simulate Dropped
 - **Control buttons:**
   - Run Contract Tests
   - Generate Report
@@ -124,9 +124,9 @@ Must show:
 
 Buttons required:
 - Send Valid Webhook
-- Send Duplicate Webhook (3x)
-- Send Out-of-Order Events
-- Simulate Dropped Event
+- Send Duplicate (3x)
+- Send Out-of-Order
+- Simulate Dropped
 - Run Contract Tests
 - Generate Report
 - Reset Demo Data
@@ -168,8 +168,8 @@ Copy repo-01's final console style:
 ## Required Interactions
 
 1. **Click event card** → center pane shows event detail with contract breakdown
-2. **Click "Send Duplicate Webhook"** → 3 events sent, only 1 processed
-3. **Click "Simulate Dropped Event"** → event appears in replay queue
+2. **Click "Send Duplicate (3x)"** → 3 events sent, only 1 processed
+3. **Click "Simulate Dropped"** → event appears in replay queue
 4. **Click "Run Contract Tests"** → full suite runs, results shown
 5. **Click "Generate Report"** → report appears in reports list
 6. **Click "Reset Demo Data"** → all events cleared

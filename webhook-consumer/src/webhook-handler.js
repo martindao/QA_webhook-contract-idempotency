@@ -8,7 +8,7 @@ const { handleEvent } = require('./ordering-handler');
 const { addToQueue } = require('./replay-queue');
 const { addContractResult, getContractResults } = require('../../runtime/store');
 
-const PORT = 3002;
+const PORT = process.env.CONSUMER_PORT || 3002;
 const SECRET = process.env.WEBHOOK_SECRET || 'webhook-demo-secret-2026';
 
 /**

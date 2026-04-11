@@ -11,31 +11,36 @@ const MAX_AGE_SECONDS = 86400; // 24 hours
  * @returns {Object|null} The queued entry or null if duplicate
  */
 function addToQueue(event) {
-  const queue = getReplayQueue();
+	const queue = getReplayQueue();
 
-  // Don't add duplicates
-  if (queue.events.find(e => e.event_id === event.id)) {
-    return null;
-  }
+	// Ensure event has required fields per ARTIFACT_SCHEMA.md
+	const eventId = event.id || `evt_unknown_${Date.now()}`;
+	const eventType = event.type || 'unknown';
+	const eventTimestamp = event.timestamp || new Date().toISOString();
 
-  const now = new Date();
-  const entry = {
-    event_id: event.id,
-    type: event.type,
-    original_timestamp: event.timestamp,
-    queued_at: now.toISOString(),
-    source: event.source || 'unknown',
-    retry_count: 0,
-    status: 'pending',
-    last_error: null,
-    next_retry_at: null, // Will be set when retry is scheduled
-    payload: event
-  };
+	// Don't add duplicates
+	if (queue.events.find(e => e.event_id === eventId)) {
+		return null;
+	}
 
-  queue.events.push(entry);
-  saveReplayQueue(queue);
+	const now = new Date();
+	const entry = {
+		event_id: eventId,
+		type: eventType,
+		original_timestamp: eventTimestamp,
+		queued_at: now.toISOString(),
+		source: event.source || 'unknown',
+		retry_count: 0,
+		status: 'pending',
+		last_error: null,
+		next_retry_at: null, // Will be set when retry is scheduled
+		payload: event
+	};
 
-  return entry;
+	queue.events.push(entry);
+	saveReplayQueue(queue);
+
+	return entry;
 }
 
 /**

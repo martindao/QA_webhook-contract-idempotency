@@ -84,12 +84,20 @@ describe('Out-of-Order Event Integration', () => {
     await new Promise(resolve => setTimeout(resolve, 2000));
   }, 10000);
 
-  afterAll(() => {
+  afterAll(async () => {
     if (consumerProcess) {
       consumerProcess.kill();
+      await new Promise(resolve => {
+        consumerProcess.on('exit', resolve);
+        setTimeout(resolve, 1000);
+      });
     }
     if (consoleProcess) {
       consoleProcess.kill();
+      await new Promise(resolve => {
+        consoleProcess.on('exit', resolve);
+        setTimeout(resolve, 1000);
+      });
     }
   });
 

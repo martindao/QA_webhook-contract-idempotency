@@ -4,6 +4,26 @@
 const { getEventOrdering, saveEventOrdering } = require('../../runtime/store');
 
 /**
+ * Derive final state from event type
+ * @param {string} eventType - The event type
+ * @returns {string} The derived final state
+ */
+function deriveFinalState(eventType) {
+	// Map event types to states
+	const stateMap = {
+		'order.created': 'created',
+		'order.confirmed': 'confirmed',
+		'order.shipped': 'shipped',
+		'order.delivered': 'delivered',
+		'order.cancelled': 'cancelled',
+		'payment.succeeded': 'paid',
+		'payment.failed': 'payment_failed',
+		'payment.refunded': 'refunded'
+	};
+	return stateMap[eventType] || eventType.split('.').pop() || 'unknown';
+}
+
+/**
  * Handle an incoming event, processing or holding based on sequence order
  * @param {Object} event - The event to process
  * @param {string} event.id - Event ID
@@ -53,48 +73,54 @@ function handleEvent(event) {
     
     const expectedSeq = entityEntry.expected_sequence;
     
-    if (event.sequence === expectedSeq) {
-        // Expected sequence — process immediately
-        const processedEvent = {
-            event_id: event.id,
-            type: event.type,
-            sequence: event.sequence,
-            timestamp: event.timestamp,
-            received_at: now,
-            processed_at: now
-        };
-        entityEntry.events.push(processedEvent);
-        entityEntry.processing_order.push(event.id);
-        result.processed.push(event);
-        logOrdering(state, entityId, event.id, event.sequence, 'processed');
+	if (event.sequence === expectedSeq) {
+		// Expected sequence — process immediately
+		const processedEvent = {
+			event_id: event.id,
+			type: event.type,
+			sequence: event.sequence,
+			timestamp: event.timestamp,
+			received_at: now,
+			processed_at: now
+		};
+		entityEntry.events.push(processedEvent);
+		entityEntry.processing_order.push(event.id);
+		result.processed.push(event);
+		logOrdering(state, entityId, event.id, event.sequence, 'processed');
+
+		// Update final_state based on event type
+		entityEntry.final_state = deriveFinalState(event.type);
+
+		entityEntry.expected_sequence++;
         
-        entityEntry.expected_sequence++;
-        
-        // Check pending events for next in sequence
-        while (entityEntry.pending.length > 0) {
-            const nextPending = entityEntry.pending.find(e => e.sequence === entityEntry.expected_sequence);
-            if (nextPending) {
-                // Release held event
-                const releasedEvent = {
-                    event_id: nextPending.event_id,
-                    type: nextPending.type,
-                    sequence: nextPending.sequence,
-                    timestamp: nextPending.timestamp,
-                    received_at: nextPending.held_at,
-                    held_until: now,
-                    processed_at: now
-                };
-                entityEntry.events.push(releasedEvent);
-                entityEntry.processing_order.push(nextPending.event_id);
-                result.processed.push(nextPending);
-                logOrdering(state, entityId, nextPending.event_id, nextPending.sequence, 'released');
-                
-                entityEntry.pending = entityEntry.pending.filter(e => e !== nextPending);
-                entityEntry.expected_sequence++;
-            } else {
-                break;
-            }
-        }
+	// Check pending events for next in sequence
+		while (entityEntry.pending.length > 0) {
+			const nextPending = entityEntry.pending.find(e => e.sequence === entityEntry.expected_sequence);
+			if (nextPending) {
+				// Release held event
+				const releasedEvent = {
+					event_id: nextPending.event_id,
+					type: nextPending.type,
+					sequence: nextPending.sequence,
+					timestamp: nextPending.timestamp,
+					received_at: nextPending.held_at,
+					held_until: now,
+					processed_at: now
+				};
+				entityEntry.events.push(releasedEvent);
+				entityEntry.processing_order.push(nextPending.event_id);
+				result.processed.push(nextPending);
+				logOrdering(state, entityId, nextPending.event_id, nextPending.sequence, 'released');
+
+				// Update final_state based on event type
+				entityEntry.final_state = deriveFinalState(nextPending.type);
+
+				entityEntry.pending = entityEntry.pending.filter(e => e !== nextPending);
+				entityEntry.expected_sequence++;
+			} else {
+				break;
+			}
+		}
     } else if (event.sequence > expectedSeq) {
         // Future sequence — hold in pending queue
         const heldEvent = {

@@ -170,6 +170,15 @@ function handleGetReplayQueue(res) {
   serveJSON(res, response);
 }
 
+function handleGetEventOrdering(res) {
+  const ordering = store.getEventOrdering();
+  const response = {
+    last_updated: ordering.last_updated,
+    ordering_events: ordering.ordering_events || []
+  };
+  serveJSON(res, response);
+}
+
 function handleGetReports(res) {
   if (!fs.existsSync(REPORTS_DIR)) {
     fs.mkdirSync(REPORTS_DIR, { recursive: true });
@@ -588,12 +597,27 @@ const server = http.createServer(async (req, res) => {
     handleGetReplayQueue(res);
     return;
   }
-  
-  // Route: GET /api/reports
-  if (pathname === '/api/reports' && req.method === 'GET') {
-    handleGetReports(res);
+
+  // Route: GET /api/event-ordering
+  if (pathname === '/api/event-ordering' && req.method === 'GET') {
+    handleGetEventOrdering(res);
     return;
   }
+
+	// Route: GET /api/reports
+	if (pathname === '/api/reports' && req.method === 'GET') {
+		handleGetReports(res);
+		return;
+	}
+
+	// Route: GET /api/reports/:id
+	const reportsMatch = pathname.match(/^\/api\/reports\/([^\/]+)$/);
+	if (reportsMatch && req.method === 'GET') {
+		const reportId = reportsMatch[1];
+		const reportPath = path.join(REPORTS_DIR, reportId.endsWith('.md') ? reportId : `${reportId}.md`);
+		serveFile(res, reportPath, 'text/markdown');
+		return;
+	}
   
   // Route: GET /api/health
   if (pathname === '/api/health' && req.method === 'GET') {
