@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateContract } from '../../webhook-consumer/src/contract-validator.js';
+import { validateContract, verifySignatureTimingSafe } from '../../webhook-consumer/src/contract-validator.js';
 import { createSignature, verifySignature } from '../../mock-provider/src/signature-signer.js';
 import signatureKeys from '../fixtures/signature-keys.json' with { type: 'json' };
 
@@ -16,7 +16,7 @@ describe('Contract Validator - Signature Verification', () => {
       const result = validateContract(payload, headers, secret);
 
       expect(result.valid).toBe(true);
-      expect(result.details.signature_valid).toBe(true);
+      expect(result.validation_details.signature_valid).toBe(true);
     });
 
     it('should verify signature using timing-safe comparison', () => {
@@ -25,6 +25,7 @@ describe('Contract Validator - Signature Verification', () => {
       const signature = createSignature(payloadString, secret);
 
       expect(verifySignature(payloadString, signature, secret)).toBe(true);
+      expect(verifySignatureTimingSafe(payloadString, signature, secret)).toBe(true);
     });
   });
 
@@ -40,6 +41,7 @@ describe('Contract Validator - Signature Verification', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.find(e => e.field === 'signature')).toBeDefined();
+      expect(result.validation_details.signature_valid).toBe(false);
     });
 
     it('should fail with tampered payload', () => {
@@ -54,7 +56,7 @@ describe('Contract Validator - Signature Verification', () => {
       const result = validateContract(tamperedPayload, headers, secret);
 
       expect(result.valid).toBe(false);
-      expect(result.details.signature_valid).toBe(false);
+      expect(result.validation_details.signature_valid).toBe(false);
     });
 
     it('should fail with malformed signature format', () => {
@@ -64,7 +66,7 @@ describe('Contract Validator - Signature Verification', () => {
       const result = validateContract(payload, headers, secret);
 
       expect(result.valid).toBe(false);
-      expect(verifySignature(JSON.stringify(payload), 'invalid_format', secret)).toBe(false);
+      expect(verifySignatureTimingSafe(JSON.stringify(payload), 'invalid_format', secret)).toBe(false);
     });
   });
 
@@ -77,6 +79,7 @@ describe('Contract Validator - Signature Verification', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.find(e => e.field === 'signature')).toBeDefined();
+      expect(result.validation_details.signature_error).toBeDefined();
     });
 
     it('should pass when no secret provided (skip signature check)', () => {
@@ -87,6 +90,28 @@ describe('Contract Validator - Signature Verification', () => {
 
       // Should pass since no secret means signature check is skipped
       expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('Timing-Safe Comparison', () => {
+    it('should use crypto.timingSafeEqual for signature verification', () => {
+      const payload = validPayload();
+      const payloadString = JSON.stringify(payload);
+      const signature = createSignature(payloadString, secret);
+
+      // Valid signature should pass
+      expect(verifySignatureTimingSafe(payloadString, signature, secret)).toBe(true);
+
+      // Invalid signature should fail
+      expect(verifySignatureTimingSafe(payloadString, 'sha256=invalid', secret)).toBe(false);
+    });
+
+    it('should reject signatures of different lengths', () => {
+      const payload = validPayload();
+      const payloadString = JSON.stringify(payload);
+      
+      // Signature with wrong length should fail safely
+      expect(verifySignatureTimingSafe(payloadString, 'sha256=abc', secret)).toBe(false);
     });
   });
 });

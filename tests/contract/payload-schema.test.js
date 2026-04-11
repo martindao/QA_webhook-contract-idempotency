@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { validateContract, ALLOWED_TYPES, TIMESTAMP_TOLERANCE_SECONDS } from '../../webhook-consumer/src/contract-validator.js';
+import { validateContract, ALLOWED_TYPES, DEFAULT_TIMESTAMP_TOLERANCE_SECONDS } from '../../webhook-consumer/src/contract-validator.js';
 import validEvents from '../fixtures/sample-events.json' with { type: 'json' };
 import invalidPayloads from '../fixtures/invalid-payloads.json' with { type: 'json' };
 
@@ -11,9 +11,9 @@ describe('Contract Validator - Payload Schema', () => {
       const result = validateContract(payload, {});
 
       expect(result.valid).toBe(true);
-      expect(result.details.id_present).toBe(true);
-      expect(result.details.type_valid).toBe(true);
-      expect(result.details.timestamp_valid).toBe(true);
+      expect(result.validation_details.id_present).toBe(true);
+      expect(result.validation_details.type_valid).toBe(true);
+      expect(result.validation_details.timestamp_valid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
 
@@ -22,7 +22,7 @@ describe('Contract Validator - Payload Schema', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.find(e => e.field === 'id')).toBeDefined();
-      expect(result.details.id_present).toBe(false);
+      expect(result.validation_details.id_present).toBe(false);
     });
 
     it('should fail when type is missing', () => {
@@ -37,6 +37,7 @@ describe('Contract Validator - Payload Schema', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.find(e => e.field === 'timestamp')).toBeDefined();
+      expect(result.validation_details.timestamp_error).toBeDefined();
     });
 
     it('should fail when data is missing', () => {
@@ -52,28 +53,28 @@ describe('Contract Validator - Payload Schema', () => {
       const payload = { ...validPayload(), type: 'payment.succeeded' };
       const result = validateContract(payload, {});
 
-      expect(result.details.type_valid).toBe(true);
+      expect(result.validation_details.type_valid).toBe(true);
     });
 
     it('should accept payment.failed type', () => {
       const payload = { ...validPayload(), type: 'payment.failed' };
       const result = validateContract(payload, {});
 
-      expect(result.details.type_valid).toBe(true);
+      expect(result.validation_details.type_valid).toBe(true);
     });
 
     it('should accept order.created type', () => {
       const payload = { ...validPayload(), type: 'order.created' };
       const result = validateContract(payload, {});
 
-      expect(result.details.type_valid).toBe(true);
+      expect(result.validation_details.type_valid).toBe(true);
     });
 
     it('should accept order.shipped type', () => {
       const payload = { ...validPayload(), type: 'order.shipped' };
       const result = validateContract(payload, {});
 
-      expect(result.details.type_valid).toBe(true);
+      expect(result.validation_details.type_valid).toBe(true);
     });
 
     it('should reject invalid event type', () => {
@@ -81,7 +82,7 @@ describe('Contract Validator - Payload Schema', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.find(e => e.field === 'type')).toBeDefined();
-      expect(result.details.type_valid).toBe(false);
+      expect(result.validation_details.type_valid).toBe(false);
     });
   });
 
@@ -90,7 +91,7 @@ describe('Contract Validator - Payload Schema', () => {
       const payload = { ...validPayload(), timestamp: new Date().toISOString() };
       const result = validateContract(payload, {});
 
-      expect(result.details.timestamp_fresh).toBe(true);
+      expect(result.validation_details.timestamp_fresh).toBe(true);
     });
 
     it('should reject timestamp older than 300 seconds', () => {
@@ -98,7 +99,28 @@ describe('Contract Validator - Payload Schema', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.find(e => e.field === 'timestamp')).toBeDefined();
-      expect(result.details.timestamp_fresh).toBe(false);
+      expect(result.validation_details.timestamp_fresh).toBe(false);
+    });
+  });
+
+  describe('Error Details', () => {
+    it('should include error_type in errors', () => {
+      const result = validateContract(invalidPayloads.missingId, {});
+
+      expect(result.valid).toBe(false);
+      const idError = result.errors.find(e => e.field === 'id');
+      expect(idError).toBeDefined();
+      expect(idError.error_type).toBe('missing_field');
+    });
+
+    it('should include specific error messages', () => {
+      const result = validateContract(invalidPayloads.invalidType, {});
+
+      expect(result.valid).toBe(false);
+      const typeError = result.errors.find(e => e.field === 'type');
+      expect(typeError).toBeDefined();
+      expect(typeError.error_type).toBe('invalid_type');
+      expect(typeError.error).toContain('not in allowed list');
     });
   });
 });

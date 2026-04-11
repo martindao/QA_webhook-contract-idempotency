@@ -1,1019 +1,1574 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Webhook Contract & Idempotency Console</title>
-  <style>
-    :root {
-      --bg-primary: #1a1a2e;
-      --bg-secondary: #16213e;
-      --bg-tertiary: #0f3460;
-      --text-primary: #e2e8f0;
-      --text-secondary: #94a3b8;
-      --text-muted: #64748b;
-      --green: #10b981;
-      --red: #ef4444;
-      --yellow: #f59e0b;
-      --blue: #3b82f6;
-      --gray: #6b7280;
-      --border: #2d3748;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
-      background: var(--bg-primary);
-      color: var(--text-primary);
-      min-height: 100vh;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .dashboard {
-      display: grid;
-      grid-template-columns: 340px 1fr 300px;
-      height: 100vh;
-      gap: 1px;
-      background: var(--border);
-    }
-
-    @media (max-width: 1200px) {
-      .dashboard {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto auto auto;
-      }
-    }
-
-    /* Left Rail - Event Queue */
-    .left-rail {
-      background: var(--bg-secondary);
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    .rail-header {
-      padding: 16px;
-      border-bottom: 1px solid var(--border);
-      font-weight: 600;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-secondary);
-    }
-
-    .event-queue {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px;
-    }
-
-    .event-card {
-      background: var(--bg-tertiary);
-      border-radius: 6px;
-      padding: 12px;
-      margin-bottom: 8px;
-      cursor: pointer;
-      border-left: 3px solid var(--gray);
-      transition: all 0.15s ease;
-    }
-
-    .event-card:hover {
-      background: #1a3a5c;
-    }
-
-    .event-card.selected {
-      background: #1a3a5c;
-      box-shadow: 0 0 0 1px var(--blue);
-    }
-
-    .event-card.valid { border-left-color: var(--green); }
-    .event-card.invalid { border-left-color: var(--red); }
-    .event-card.duplicate { border-left-color: var(--yellow); }
-    .event-card.replay { border-left-color: var(--blue); }
-
-    .event-card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 6px;
-    }
-
-    .event-id {
-      font-size: 12px;
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-
-    .event-type-badge {
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 3px;
-      background: var(--bg-secondary);
-      color: var(--text-secondary);
-    }
-
-    .event-meta {
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
-    .event-status {
-      display: flex;
-      gap: 8px;
-      margin-top: 6px;
-      font-size: 10px;
-    }
-
-    .status-tag {
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-weight: 500;
-    }
-
-    .status-tag.valid { background: rgba(16, 185, 129, 0.2); color: var(--green); }
-    .status-tag.invalid { background: rgba(239, 68, 68, 0.2); color: var(--red); }
-    .status-tag.duplicate { background: rgba(245, 158, 11, 0.2); color: var(--yellow); }
-    .status-tag.queued { background: rgba(59, 130, 246, 0.2); color: var(--blue); }
-
-    /* Center Pane - Event Detail */
-    .center-pane {
-      background: var(--bg-primary);
-      overflow-y: auto;
-      padding: 20px;
-    }
-
-    .empty-state {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: var(--text-muted);
-      text-align: center;
-    }
-
-    .empty-state-icon {
-      font-size: 48px;
-      margin-bottom: 16px;
-      opacity: 0.3;
-    }
-
-    .detail-section {
-      background: var(--bg-secondary);
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-
-    .detail-section-title {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-secondary);
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .detail-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 6px 0;
-      font-size: 12px;
-    }
-
-    .detail-label {
-      color: var(--text-muted);
-    }
-
-    .detail-value {
-      color: var(--text-primary);
-      font-weight: 500;
-    }
-
-    /* Contract Validation */
-    .validation-field {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .validation-field:last-child {
-      border-bottom: none;
-    }
-
-    .validation-icon {
-      font-size: 14px;
-      flex-shrink: 0;
-      width: 16px;
-    }
-
-    .validation-icon.pass { color: var(--green); }
-    .validation-icon.fail { color: var(--red); }
-
-    .validation-content {
-      flex: 1;
-    }
-
-    .validation-field-name {
-      font-weight: 500;
-      color: var(--text-primary);
-    }
-
-    .validation-error {
-      font-size: 11px;
-      color: var(--red);
-      margin-top: 2px;
-    }
-
-    .validation-result-badge {
-      display: inline-block;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: 600;
-      margin-top: 12px;
-    }
-
-    .validation-result-badge.valid {
-      background: rgba(16, 185, 129, 0.2);
-      color: var(--green);
-    }
-
-    .validation-result-badge.invalid {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--red);
-    }
-
-    /* Idempotency Status */
-    .idempotency-block {
-      background: rgba(245, 158, 11, 0.1);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-      border-radius: 6px;
-      padding: 12px;
-    }
-
-    .idempotency-header {
-      font-weight: 600;
-      color: var(--yellow);
-      margin-bottom: 8px;
-    }
-
-    .idempotency-result {
-      margin-top: 10px;
-      padding-top: 10px;
-      border-top: 1px solid rgba(245, 158, 11, 0.2);
-      font-weight: 500;
-      color: var(--green);
-    }
-
-    /* Payload Preview */
-    .payload-preview {
-      background: var(--bg-tertiary);
-      border-radius: 4px;
-      padding: 12px;
-      font-size: 11px;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      word-break: break-all;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    /* Right Rail */
-    .right-rail {
-      background: var(--bg-secondary);
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;
-    }
-
-    /* Metrics */
-    .metrics-panel {
-      padding: 16px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .metric-card {
-      background: var(--bg-tertiary);
-      border-radius: 6px;
-      padding: 14px;
-      margin-bottom: 10px;
-    }
-
-    .metric-label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-muted);
-      margin-bottom: 6px;
-    }
-
-    .metric-value {
-      font-size: 28px;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
-
-    .metric-value.good { color: var(--green); }
-    .metric-value.warning { color: var(--yellow); }
-    .metric-value.bad { color: var(--red); }
-
-    .metric-sub {
-      font-size: 11px;
-      color: var(--text-secondary);
-      margin-top: 4px;
-    }
-
-    /* Simulation Buttons */
-    .simulation-panel {
-      padding: 16px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .panel-title {
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-secondary);
-      margin-bottom: 12px;
-    }
-
-    .btn {
-      width: 100%;
-      padding: 10px 12px;
-      border: none;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      margin-bottom: 8px;
-      text-align: left;
-      font-family: inherit;
-    }
-
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-primary {
-      background: var(--blue);
-      color: white;
-    }
-
-    .btn-primary:hover:not(:disabled) {
-      background: #2563eb;
-    }
-
-    .btn-secondary {
-      background: var(--bg-tertiary);
-      color: var(--text-primary);
-      border: 1px solid var(--border);
-    }
-
-    .btn-secondary:hover:not(:disabled) {
-      background: var(--bg-secondary);
-      border-color: var(--text-muted);
-    }
-
-    .btn-warning {
-      background: rgba(239, 68, 68, 0.2);
-      color: var(--red);
-      border: 1px solid rgba(239, 68, 68, 0.3);
-    }
-
-    .btn-warning:hover:not(:disabled) {
-      background: rgba(239, 68, 68, 0.3);
-    }
-
-    .btn-loading {
-      position: relative;
-      padding-left: 32px;
-    }
-
-    .btn-loading::before {
-      content: '';
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 12px;
-      height: 12px;
-      border: 2px solid transparent;
-      border-top-color: currentColor;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin {
-      to { transform: translateY(-50%) rotate(360deg); }
-    }
-
-    /* Replay Queue Panel */
-    .replay-panel {
-      padding: 16px;
-      flex: 1;
-      overflow-y: auto;
-    }
-
-    .replay-queue-size {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-
-    .queue-count {
-      font-size: 24px;
-      font-weight: 700;
-      color: var(--blue);
-    }
-
-    .queue-age {
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
-    .replay-event {
-      background: var(--bg-tertiary);
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 8px;
-      border-left: 3px solid var(--blue);
-    }
-
-    .replay-event-header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-
-    .replay-event-id {
-      font-size: 11px;
-      font-weight: 500;
-    }
-
-    .replay-event-age {
-      font-size: 10px;
-      color: var(--text-muted);
-    }
-
-    .replay-event-meta {
-      font-size: 10px;
-      color: var(--text-secondary);
-    }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-
-    ::-webkit-scrollbar-track {
-      background: var(--bg-primary);
-    }
-
-    ::-webkit-scrollbar-thumb {
-      background: var(--border);
-      border-radius: 3px;
-    }
-
-    ::-webkit-scrollbar-thumb:hover {
-      background: var(--text-muted);
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webhook Contract & Idempotency Console</title>
+<style>
+:root {
+--bg-primary: #09090b;
+--bg-secondary: #111114;
+--bg-tertiary: #18181b;
+--bg-hover: #1e1e22;
+--border-subtle: #27272a;
+--border-medium: #3f3f46;
+--text-primary: #fafafa;
+--text-secondary: #a1a1aa;
+--text-muted: #71717a;
+--accent-blue: #3b82f6;
+--accent-cyan: #06b6d4;
+--accent-purple: #8b5cf6;
+--status-valid: #22c55e;
+--status-valid-bg: rgba(34, 197, 94, 0.12);
+--status-invalid: #ef4444;
+--status-invalid-bg: rgba(239, 68, 68, 0.12);
+--status-duplicate: #f59e0b;
+--status-duplicate-bg: rgba(245, 158, 11, 0.12);
+--status-queued: #3b82f6;
+--status-queued-bg: rgba(59, 130, 246, 0.12);
+--radius-sm: 0.375rem;
+--radius-md: 0.5rem;
+--radius-lg: 0.75rem;
+--font-mono: 'SF Mono', 'Fira Code', Consolas, monospace;
+--font-sans: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+}
+
+body {
+font-family: var(--font-sans);
+background: var(--bg-primary);
+color: var(--text-primary);
+min-height: 100vh;
+font-size: 0.875rem;
+line-height: 1.5;
+}
+
+.app-header {
+background: var(--bg-secondary);
+border-bottom: 1px solid var(--border-subtle);
+padding: 0.75rem 1.5rem;
+display: flex;
+align-items: center;
+justify-content: space-between;
+position: sticky;
+top: 0;
+z-index: 100;
+}
+
+.app-header-left {
+display: flex;
+align-items: center;
+gap: 0.75rem;
+}
+
+.app-logo {
+width: 28px;
+height: 28px;
+background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+border-radius: var(--radius-md);
+display: flex;
+align-items: center;
+justify-content: center;
+font-size: 0.75rem;
+font-weight: 700;
+color: #fff;
+}
+
+.app-title {
+font-size: 1rem;
+font-weight: 600;
+color: var(--text-primary);
+}
+
+.app-subtitle {
+font-size: 0.75rem;
+color: var(--text-muted);
+}
+
+.app-header-right {
+display: flex;
+align-items: center;
+gap: 1rem;
+}
+
+.header-badge {
+font-size: 0.6875rem;
+padding: 0.25rem 0.625rem;
+border-radius: 9999px;
+background: var(--bg-tertiary);
+border: 1px solid var(--border-subtle);
+color: var(--text-secondary);
+font-weight: 500;
+}
+
+.dashboard {
+display: grid;
+grid-template-columns: 340px 1fr 300px;
+height: calc(100vh - 53px);
+gap: 1px;
+background: var(--border-subtle);
+}
+
+@media (max-width: 1200px) {
+.dashboard {
+grid-template-columns: 1fr;
+height: auto;
+}
+}
+
+/* Left Rail - Event Queue */
+.left-rail {
+background: var(--bg-secondary);
+border-right: 1px solid var(--border-subtle);
+display: flex;
+flex-direction: column;
+overflow: hidden;
+}
+
+.queue-header {
+padding: 1rem 1rem 0.75rem;
+border-bottom: 1px solid var(--border-subtle);
+}
+
+.queue-title {
+font-size: 0.75rem;
+font-weight: 600;
+text-transform: uppercase;
+letter-spacing: 0.05em;
+color: var(--text-muted);
+margin-bottom: 0.5rem;
+}
+
+.queue-count {
+font-size: 0.6875rem;
+color: var(--text-muted);
+}
+
+.event-queue {
+flex: 1;
+overflow-y: auto;
+padding: 0.5rem;
+}
+
+.event-queue::-webkit-scrollbar {
+width: 6px;
+}
+
+.event-queue::-webkit-scrollbar-track {
+background: transparent;
+}
+
+.event-queue::-webkit-scrollbar-thumb {
+background: var(--border-subtle);
+border-radius: 3px;
+}
+
+.event-card {
+background: var(--bg-tertiary);
+border: 1px solid var(--border-subtle);
+border-radius: var(--radius-md);
+padding: 0.875rem;
+margin-bottom: 0.5rem;
+cursor: pointer;
+transition: all 0.15s ease;
+animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+from { opacity: 0; transform: translateY(-10px); }
+to { opacity: 1; transform: translateY(0); }
+}
+
+.event-card:hover {
+border-color: var(--border-medium);
+background: var(--bg-hover);
+}
+
+.event-card.selected {
+border-color: var(--accent-blue);
+background: rgba(59, 130, 246, 0.06);
+}
+
+.event-card.valid { border-left: 3px solid var(--status-valid); }
+.event-card.invalid { border-left: 3px solid var(--status-invalid); }
+.event-card.duplicate { border-left: 3px solid var(--status-duplicate); }
+.event-card.replay { border-left: 3px solid var(--status-queued); }
+
+.card-header {
+display: flex;
+align-items: flex-start;
+justify-content: space-between;
+margin-bottom: 0.5rem;
+}
+
+.card-id {
+font-family: var(--font-mono);
+font-size: 0.6875rem;
+color: var(--text-muted);
+}
+
+.card-severity {
+font-size: 0.625rem;
+font-weight: 700;
+padding: 0.125rem 0.375rem;
+border-radius: var(--radius-sm);
+text-transform: uppercase;
+letter-spacing: 0.04em;
+}
+
+.card-severity.valid { background: var(--status-valid-bg); color: var(--status-valid); }
+.card-severity.invalid { background: var(--status-invalid-bg); color: var(--status-invalid); }
+.card-severity.duplicate { background: var(--status-duplicate-bg); color: var(--status-duplicate); }
+.card-severity.queued { background: var(--status-queued-bg); color: var(--status-queued); }
+
+.card-title {
+font-size: 0.8125rem;
+font-weight: 500;
+color: var(--text-primary);
+margin-bottom: 0.5rem;
+line-height: 1.4;
+}
+
+.card-meta {
+display: flex;
+flex-wrap: wrap;
+gap: 0.5rem;
+font-size: 0.6875rem;
+color: var(--text-muted);
+}
+
+.card-meta-item {
+display: flex;
+align-items: center;
+gap: 0.25rem;
+}
+
+.card-trust-markers {
+display: flex;
+flex-wrap: wrap;
+gap: 0.375rem;
+margin-top: 0.5rem;
+}
+
+.trust-chip {
+font-size: 0.625rem;
+padding: 0.125rem 0.375rem;
+border-radius: var(--radius-sm);
+background: var(--bg-primary);
+border: 1px solid var(--border-subtle);
+color: var(--text-secondary);
+font-weight: 500;
+}
+
+/* Center Pane - Event Detail */
+.center-pane {
+background: var(--bg-primary);
+overflow-y: auto;
+padding: 1.5rem;
+}
+
+.center-pane::-webkit-scrollbar {
+width: 6px;
+}
+
+.center-pane::-webkit-scrollbar-track {
+background: transparent;
+}
+
+.center-pane::-webkit-scrollbar-thumb {
+background: var(--border-subtle);
+border-radius: 3px;
+}
+
+.empty-state {
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+height: 100%;
+text-align: center;
+color: var(--text-muted);
+}
+
+.empty-state-icon {
+font-size: 2.5rem;
+margin-bottom: 1rem;
+opacity: 0.4;
+}
+
+.empty-state-title {
+font-size: 1rem;
+font-weight: 500;
+color: var(--text-secondary);
+margin-bottom: 0.5rem;
+}
+
+.empty-state-desc {
+font-size: 0.8125rem;
+max-width: 320px;
+}
+
+.detail-section {
+background: var(--bg-tertiary);
+border: 1px solid var(--border-subtle);
+border-radius: var(--radius-md);
+padding: 1rem;
+margin-bottom: 1rem;
+}
+
+.detail-section-title {
+font-size: 0.75rem;
+font-weight: 600;
+text-transform: uppercase;
+letter-spacing: 0.05em;
+color: var(--text-muted);
+margin-bottom: 0.75rem;
+padding-bottom: 0.5rem;
+border-bottom: 1px solid var(--border-subtle);
+}
+
+.detail-row {
+display: flex;
+justify-content: space-between;
+padding: 0.375rem 0;
+font-size: 0.8125rem;
+}
+
+.detail-label {
+color: var(--text-muted);
+}
+
+.detail-value {
+color: var(--text-primary);
+font-weight: 500;
+}
+
+.detail-value.mono {
+font-family: var(--font-mono);
+font-size: 0.75rem;
+}
+
+/* Contract Validation */
+.validation-field {
+display: flex;
+align-items: flex-start;
+gap: 0.625rem;
+padding: 0.5rem 0;
+border-bottom: 1px solid var(--border-subtle);
+}
+
+.validation-field:last-child {
+border-bottom: none;
+}
+
+.validation-icon {
+font-size: 0.875rem;
+flex-shrink: 0;
+width: 1rem;
+}
+
+.validation-icon.pass { color: var(--status-valid); }
+.validation-icon.fail { color: var(--status-invalid); }
+
+.validation-content {
+flex: 1;
+}
+
+.validation-field-name {
+font-weight: 500;
+color: var(--text-primary);
+font-size: 0.8125rem;
+}
+
+.validation-error {
+font-size: 0.75rem;
+color: var(--status-invalid);
+margin-top: 0.125rem;
+}
+
+.validation-result-badge {
+display: inline-block;
+padding: 0.375rem 0.75rem;
+border-radius: var(--radius-sm);
+font-size: 0.75rem;
+font-weight: 600;
+margin-top: 0.75rem;
+text-transform: uppercase;
+letter-spacing: 0.04em;
+}
+
+.validation-result-badge.valid {
+background: var(--status-valid-bg);
+color: var(--status-valid);
+}
+
+.validation-result-badge.invalid {
+background: var(--status-invalid-bg);
+color: var(--status-invalid);
+}
+
+/* Idempotency Status */
+.idempotency-block {
+background: var(--status-duplicate-bg);
+border: 1px solid rgba(245, 158, 11, 0.3);
+border-radius: var(--radius-md);
+padding: 0.75rem;
+}
+
+.idempotency-header {
+font-weight: 600;
+color: var(--status-duplicate);
+margin-bottom: 0.5rem;
+font-size: 0.8125rem;
+}
+
+.idempotency-result {
+margin-top: 0.625rem;
+padding-top: 0.625rem;
+border-top: 1px solid rgba(245, 158, 11, 0.2);
+font-weight: 500;
+color: var(--status-valid);
+font-size: 0.8125rem;
+}
+
+/* Payload Preview */
+.payload-preview {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+}
+
+/* Replay Status Block */
+.replay-status-block {
+  background: var(--status-queued-bg);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+}
+
+.replay-status-block .detail-row:last-of-type {
+  margin-bottom: 0;
+}
+
+/* Ordering Block */
+.ordering-block {
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: var(--radius-md);
+  padding: 0.75rem;
+}
+
+.ordering-result {
+  margin-top: 0.625rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid rgba(139, 92, 246, 0.2);
+  font-weight: 500;
+  color: var(--status-valid);
+  font-size: 0.8125rem;
+}
+
+/* Artifact Links */
+.artifact-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.artifact-link {
+  font-size: 0.6875rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  font-family: var(--font-sans);
+}
+
+.artifact-link:hover {
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+/* Right Rail */
+.right-rail {
+background: var(--bg-secondary);
+border-left: 1px solid var(--border-subtle);
+display: flex;
+flex-direction: column;
+overflow-y: auto;
+}
+
+.right-rail::-webkit-scrollbar {
+width: 6px;
+}
+
+.right-rail::-webkit-scrollbar-track {
+background: transparent;
+}
+
+.right-rail::-webkit-scrollbar-thumb {
+background: var(--border-subtle);
+border-radius: 3px;
+}
+
+/* Metrics */
+.metrics-panel {
+padding: 1rem;
+border-bottom: 1px solid var(--border-subtle);
+}
+
+.panel-title {
+font-size: 0.6875rem;
+font-weight: 600;
+text-transform: uppercase;
+letter-spacing: 0.05em;
+color: var(--text-muted);
+margin-bottom: 0.75rem;
+}
+
+.metric-card {
+background: var(--bg-tertiary);
+border: 1px solid var(--border-subtle);
+border-radius: var(--radius-md);
+padding: 0.875rem;
+margin-bottom: 0.625rem;
+}
+
+.metric-label {
+font-size: 0.625rem;
+text-transform: uppercase;
+letter-spacing: 0.05em;
+color: var(--text-muted);
+margin-bottom: 0.375rem;
+}
+
+.metric-value {
+font-size: 1.5rem;
+font-weight: 700;
+color: var(--text-primary);
+font-family: var(--font-mono);
+}
+
+.metric-value.good { color: var(--status-valid); }
+.metric-value.warning { color: var(--status-duplicate); }
+.metric-value.bad { color: var(--status-invalid); }
+
+.metric-sub {
+font-size: 0.75rem;
+color: var(--text-secondary);
+margin-top: 0.25rem;
+}
+
+/* Simulation Buttons */
+.simulation-panel {
+padding: 1rem;
+border-bottom: 1px solid var(--border-subtle);
+}
+
+.sim-controls {
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
+}
+
+.sim-btn {
+display: flex;
+align-items: center;
+justify-content: space-between;
+width: 100%;
+padding: 0.625rem 0.75rem;
+background: var(--bg-tertiary);
+border: 1px solid var(--border-subtle);
+border-radius: var(--radius-md);
+color: var(--text-primary);
+font-size: 0.75rem;
+font-weight: 500;
+cursor: pointer;
+transition: all 0.2s ease;
+font-family: var(--font-sans);
+}
+
+.sim-btn:hover {
+border-color: var(--accent-blue);
+background: var(--bg-hover);
+}
+
+.sim-btn:active {
+transform: scale(0.98);
+}
+
+.sim-btn.loading {
+opacity: 0.7;
+cursor: wait;
+}
+
+.sim-btn-icon {
+width: 16px;
+height: 16px;
+margin-right: 0.5rem;
+}
+
+.sim-btn-text {
+flex: 1;
+text-align: left;
+}
+
+.sim-btn-badge {
+font-size: 0.625rem;
+padding: 0.125rem 0.375rem;
+border-radius: var(--radius-sm);
+background: var(--bg-primary);
+border: 1px solid var(--border-subtle);
+color: var(--text-muted);
+}
+
+.sim-btn-badge.valid { background: var(--status-valid-bg); color: var(--status-valid); border-color: var(--status-valid); }
+.sim-btn-badge.duplicate { background: var(--status-duplicate-bg); color: var(--status-duplicate); border-color: var(--status-duplicate); }
+.sim-btn-badge.queued { background: var(--status-queued-bg); color: var(--status-queued); border-color: var(--status-queued); }
+.sim-btn-badge.invalid { background: var(--status-invalid-bg); color: var(--status-invalid); border-color: var(--status-invalid); }
+
+.reset-btn {
+margin-top: 0.5rem;
+padding: 0.5rem;
+background: transparent;
+border: 1px dashed var(--border-subtle);
+border-radius: var(--radius-md);
+color: var(--text-muted);
+font-size: 0.6875rem;
+cursor: pointer;
+transition: all 0.2s ease;
+font-family: var(--font-sans);
+}
+
+.reset-btn:hover {
+border-color: var(--status-invalid);
+color: var(--status-invalid);
+}
+
+/* Replay Queue Panel */
+.replay-panel {
+padding: 1rem;
+flex: 1;
+overflow-y: auto;
+}
+
+.replay-queue-size {
+display: flex;
+align-items: center;
+gap: 0.5rem;
+margin-bottom: 0.75rem;
+}
+
+.queue-count {
+font-size: 1.5rem;
+font-weight: 700;
+color: var(--status-queued);
+font-family: var(--font-mono);
+}
+
+.queue-age {
+font-size: 0.75rem;
+color: var(--text-muted);
+}
+
+.replay-event {
+background: var(--bg-tertiary);
+border: 1px solid var(--border-subtle);
+border-left: 3px solid var(--status-queued);
+border-radius: var(--radius-md);
+padding: 0.625rem;
+margin-bottom: 0.5rem;
+}
+
+.replay-event-header {
+display: flex;
+justify-content: space-between;
+margin-bottom: 0.25rem;
+}
+
+.replay-event-id {
+font-size: 0.75rem;
+font-weight: 500;
+font-family: var(--font-mono);
+color: var(--text-primary);
+}
+
+.replay-event-age {
+font-size: 0.6875rem;
+color: var(--text-muted);
+}
+
+.replay-event-meta {
+font-size: 0.6875rem;
+color: var(--text-secondary);
+}
+
+/* Loading State */
+.loading-overlay {
+position: absolute;
+top: 0;
+left: 0;
+right: 0;
+bottom: 0;
+background: rgba(9, 9, 11, 0.8);
+display: flex;
+align-items: center;
+justify-content: center;
+z-index: 50;
+}
+
+.loading-spinner {
+width: 24px;
+height: 24px;
+border: 2px solid var(--border-subtle);
+border-top-color: var(--accent-blue);
+border-radius: 50%;
+animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+to { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+.dashboard {
+grid-template-columns: 300px 1fr 240px;
+}
+}
+
+@media (max-width: 900px) {
+.dashboard {
+grid-template-columns: 1fr;
+height: auto;
+}
+.left-rail {
+border-right: none;
+border-bottom: 1px solid var(--border-subtle);
+max-height: 400px;
+}
+.right-rail {
+border-left: none;
+border-top: 1px solid var(--border-subtle);
+}
+}
+</style>
 </head>
 <body>
-  <div class="dashboard">
-    <!-- Left Rail: Event Queue -->
-    <div class="left-rail">
-      <div class="rail-header">Webhook Events</div>
-      <div class="event-queue" id="eventQueue">
-        <!-- Events will be rendered here -->
-      </div>
-    </div>
+<header class="app-header">
+<div class="app-header-left">
+<div class="app-logo">WH</div>
+<div>
+<div class="app-title">Webhook Contract Console</div>
+<div class="app-subtitle">Contract Validation & Idempotency Harness</div>
+</div>
+</div>
+<div class="app-header-right">
+<span class="header-badge" id="event-count-badge">0 events</span>
+<span class="header-badge" id="contract-status-badge">Contract: —</span>
+</div>
+</header>
 
-    <!-- Center Pane: Event Detail -->
-    <div class="center-pane" id="centerPane">
-      <div class="empty-state" id="emptyState">
-        <div class="empty-state-icon">&#128230;</div>
-        <div>Send a webhook to see results</div>
-      </div>
-      <div id="eventDetail" style="display: none;"></div>
-    </div>
+<div class="dashboard">
+<!-- Left Rail: Event Queue -->
+<div class="left-rail">
+<div class="queue-header">
+<div class="queue-title">Webhook Events</div>
+<div class="queue-count" id="queue-count">Loading...</div>
+</div>
+<div class="event-queue" id="eventQueue">
+<div class="empty-state">
+<div class="empty-state-icon">📋</div>
+<div class="empty-state-title">No events yet</div>
+<div class="empty-state-desc">Use the <strong>Live Simulation</strong> buttons to generate webhook events and test contract validation.</div>
+</div>
+</div>
+</div>
 
-    <!-- Right Rail: Metrics + Controls + Replay -->
-    <div class="right-rail">
-      <!-- Metrics -->
-      <div class="metrics-panel">
-        <div class="panel-title">Metrics</div>
-        <div class="metric-card">
-          <div class="metric-label">Contract Pass Rate</div>
-          <div class="metric-value" id="contractPassRate">--%</div>
-          <div class="metric-sub" id="contractSub">No data yet</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Idempotency Score</div>
-          <div class="metric-value good" id="idempotencyScore">--%</div>
-          <div class="metric-sub" id="idempotencySub">No duplicates yet</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-label">Replay Queue</div>
-          <div class="metric-value" id="replayQueueSize">0</div>
-          <div class="metric-sub" id="replayQueueAge">Queue empty</div>
-        </div>
-      </div>
+<!-- Center Pane: Event Detail -->
+<div class="center-pane" id="centerPane">
+<div class="empty-state" id="emptyState">
+<div class="empty-state-icon">🔍</div>
+<div class="empty-state-title">Select an event</div>
+<div class="empty-state-desc">Choose an event from the queue to view its contract validation, idempotency status, and payload details.</div>
+</div>
+<div id="eventDetail" style="display: none;"></div>
+</div>
 
-      <!-- Simulation Buttons -->
-      <div class="simulation-panel">
-        <div class="panel-title">Live Simulation</div>
-        <button class="btn btn-primary" id="btnValid" onclick="simulateValid()">Send Valid Webhook</button>
-        <button class="btn btn-primary" id="btnDuplicate" onclick="simulateDuplicate()">Send Duplicate (3x)</button>
-        <button class="btn btn-primary" id="btnOutOfOrder" onclick="simulateOutOfOrder()">Send Out-of-Order</button>
-        <button class="btn btn-primary" id="btnDropped" onclick="simulateDropped()">Simulate Dropped</button>
-      </div>
+<!-- Right Rail: Metrics + Controls + Replay -->
+<div class="right-rail">
+<!-- Metrics -->
+<div class="metrics-panel">
+<div class="panel-title">Runtime Metrics</div>
+<div class="metric-card">
+<div class="metric-label">Contract Pass Rate</div>
+<div class="metric-value" id="contractPassRate">--%</div>
+<div class="metric-sub" id="contractSub">No data yet</div>
+</div>
+<div class="metric-card">
+<div class="metric-label">Idempotency Score</div>
+<div class="metric-value good" id="idempotencyScore">--%</div>
+<div class="metric-sub" id="idempotencySub">No duplicates yet</div>
+</div>
+<div class="metric-card">
+<div class="metric-label">Replay Queue</div>
+<div class="metric-value" id="replayQueueSize">0</div>
+<div class="metric-sub" id="replayQueueAge">Queue empty</div>
+</div>
+</div>
 
-      <!-- Control Buttons -->
-      <div class="simulation-panel">
-        <div class="panel-title">Controls</div>
-        <button class="btn btn-secondary" id="btnTests" onclick="runContractTests()">Run Contract Tests</button>
-        <button class="btn btn-secondary" id="btnReport" onclick="generateReport()">Generate Report</button>
-        <button class="btn btn-warning" id="btnReset" onclick="resetDemo()">Reset Demo Data</button>
-      </div>
+<!-- Simulation Buttons -->
+<div class="simulation-panel">
+<div class="panel-title">Live Simulation</div>
+<div class="sim-controls">
+<button class="sim-btn" id="btnValid" onclick="simulateValid()">
+<svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+<polyline points="22 4 12 14.01 9 11.01"/>
+</svg>
+<span class="sim-btn-text">Send Valid Webhook</span>
+<span class="sim-btn-badge valid">VALID</span>
+</button>
+<button class="sim-btn" id="btnDuplicate" onclick="simulateDuplicate()">
+<svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+</svg>
+<span class="sim-btn-text">Send Duplicate (3x)</span>
+<span class="sim-btn-badge duplicate">DUP</span>
+</button>
+<button class="sim-btn" id="btnOutOfOrder" onclick="simulateOutOfOrder()">
+<svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<line x1="8" y1="6" x2="21" y2="6"/>
+<line x1="8" y1="12" x2="21" y2="12"/>
+<line x1="8" y1="18" x2="21" y2="18"/>
+<line x1="3" y1="6" x2="3.01" y2="6"/>
+<line x1="3" y1="12" x2="3.01" y2="12"/>
+<line x1="3" y1="18" x2="3.01" y2="18"/>
+</svg>
+<span class="sim-btn-text">Send Out-of-Order</span>
+<span class="sim-btn-badge queued">SEQ</span>
+</button>
+<button class="sim-btn" id="btnDropped" onclick="simulateDropped()">
+<svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<circle cx="12" cy="12" r="10"/>
+<line x1="15" y1="9" x2="9" y2="15"/>
+<line x1="9" y1="9" x2="15" y2="15"/>
+</svg>
+<span class="sim-btn-text">Simulate Dropped</span>
+<span class="sim-btn-badge invalid">DROP</span>
+</button>
+</div>
+</div>
 
-      <!-- Replay Queue -->
-      <div class="replay-panel">
-        <div class="panel-title">Replay Queue</div>
-        <div class="replay-queue-size">
-          <span class="queue-count" id="replayCount">0</span>
-          <span class="queue-age" id="replayAge">events pending</span>
-        </div>
-        <div id="replayEvents">
-          <!-- Replay events will be rendered here -->
-        </div>
-      </div>
-    </div>
-  </div>
+<!-- Control Buttons -->
+<div class="simulation-panel">
+<div class="panel-title">Controls</div>
+<div class="sim-controls">
+<button class="sim-btn" id="btnTests" onclick="runContractTests()">
+<svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+<polyline points="14 2 14 8 20 8"/>
+<line x1="16" y1="13" x2="8" y2="13"/>
+<line x1="16" y1="17" x2="8" y2="17"/>
+<polyline points="10 9 9 9 8 9"/>
+</svg>
+<span class="sim-btn-text">Run Contract Tests</span>
+</button>
+<button class="sim-btn" id="btnReport" onclick="generateReport()">
+<svg class="sim-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+<polyline points="14 2 14 8 20 8"/>
+<line x1="12" y1="18" x2="12" y2="12"/>
+<line x1="9" y1="15" x2="15" y2="15"/>
+</svg>
+<span class="sim-btn-text">Generate Report</span>
+</button>
+<button class="reset-btn" id="btnReset" onclick="resetDemo()">Reset Demo Data</button>
+</div>
+</div>
 
-  <script>
-    // State
-    let events = [];
-    let selectedEventId = null;
-    let contractResults = null;
-    let idempotencyMetrics = null;
-    let replayQueue = null;
+<!-- Replay Queue -->
+<div class="replay-panel">
+<div class="panel-title">Replay Queue</div>
+<div class="replay-queue-size">
+<span class="queue-count" id="replayCount">0</span>
+<span class="queue-age" id="replayAge">events pending</span>
+</div>
+<div id="replayEvents">
+<div style="color: var(--text-muted); font-size: 0.75rem; padding: 0.5rem 0;">Queue empty</div>
+</div>
+</div>
+</div>
+</div>
 
-    // API Base URL
-    const API_BASE = window.location.origin;
+<script>
+// State
+let events = [];
+let selectedEventId = null;
+let contractResults = null;
+let idempotencyMetrics = null;
+let replayQueue = null;
 
-    // Fetch helper
-    async function apiGet(endpoint) {
-      const res = await fetch(`${API_BASE}${endpoint}`);
-      return res.json();
-    }
+// API Base URL
+const API_BASE = window.location.origin;
 
-    async function apiPost(endpoint) {
-      const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST' });
-      return res.json();
-    }
+// Fetch helper
+async function apiGet(endpoint) {
+const res = await fetch(`${API_BASE}${endpoint}`);
+return res.json();
+}
 
-    // Load all data
-    async function loadAllData() {
-      try {
-        const [contract, idempotency, replay] = await Promise.all([
-          apiGet('/api/contract-results'),
-          apiGet('/api/idempotency-metrics'),
-          apiGet('/api/replay-queue')
-        ]);
+async function apiPost(endpoint) {
+const res = await fetch(`${API_BASE}${endpoint}`, { method: 'POST' });
+return res.json();
+}
 
-        contractResults = contract;
-        idempotencyMetrics = idempotency;
-        replayQueue = replay;
+// Load all data
+async function loadAllData() {
+try {
+const [contract, idempotency, replay] = await Promise.all([
+apiGet('/api/contract-results'),
+apiGet('/api/idempotency-metrics'),
+apiGet('/api/replay-queue')
+]);
 
-        updateMetrics();
-        updateEventQueue();
-        updateReplayPanel();
+contractResults = contract;
+idempotencyMetrics = idempotency;
+replayQueue = replay;
 
-        if (selectedEventId) {
-          const event = events.find(e => e.id === selectedEventId);
-          if (event) renderEventDetail(event);
-        }
-      } catch (e) {
-        console.error('Failed to load data:', e);
-      }
-    }
+updateMetrics();
+updateEventQueue();
+updateReplayPanel();
+updateHeaderBadges();
 
-    // Update metrics display
-    function updateMetrics() {
-      // Contract Pass Rate
-      const passRate = contractResults?.pass_rate ?? 0;
-      const passRateEl = document.getElementById('contractPassRate');
-      const passRateValue = (passRate * 100).toFixed(1);
-      passRateEl.textContent = `${passRateValue}%`;
-      passRateEl.className = 'metric-value ' + (passRate >= 0.95 ? 'good' : passRate >= 0.8 ? 'warning' : 'bad');
+if (selectedEventId) {
+const event = events.find(e => e.id === selectedEventId);
+if (event) renderEventDetail(event);
+}
+} catch (e) {
+console.error('Failed to load data:', e);
+}
+}
 
-      const valid = contractResults?.contract_valid ?? 0;
-      const invalid = contractResults?.contract_invalid ?? 0;
-      document.getElementById('contractSub').textContent = `${valid} valid, ${invalid} invalid`;
+// Update header badges
+function updateHeaderBadges() {
+const totalEvents = events.length;
+document.getElementById('event-count-badge').textContent = `${totalEvents} event${totalEvents !== 1 ? 's' : ''}`;
 
-      // Idempotency Score
-      const idemScore = idempotencyMetrics?.idempotency_score ?? 1;
-      const idemScoreEl = document.getElementById('idempotencyScore');
-      idemScoreEl.textContent = `${(idemScore * 100).toFixed(0)}%`;
-      idemScoreEl.className = 'metric-value ' + (idemScore >= 1 ? 'good' : 'warning');
+const passRate = contractResults?.pass_rate ?? 0;
+const badge = document.getElementById('contract-status-badge');
+if (passRate >= 0.95) {
+badge.textContent = 'Contract: ✓ Healthy';
+badge.style.color = 'var(--status-valid)';
+} else if (passRate >= 0.8) {
+badge.textContent = 'Contract: ⚠ Degraded';
+badge.style.color = 'var(--status-duplicate)';
+} else if (passRate > 0) {
+badge.textContent = 'Contract: ✗ Failing';
+badge.style.color = 'var(--status-invalid)';
+} else {
+badge.textContent = 'Contract: —';
+badge.style.color = 'var(--text-muted)';
+}
+}
 
-      const dupDetected = idempotencyMetrics?.duplicates_detected ?? 0;
-      const dupSkipped = idempotencyMetrics?.duplicates_correctly_skipped ?? 0;
-      document.getElementById('idempotencySub').textContent = 
-        dupDetected > 0 ? `${dupDetected} duplicates, ${dupSkipped} skipped` : 'No duplicates yet';
+// Update metrics display
+function updateMetrics() {
+// Contract Pass Rate
+const passRate = contractResults?.pass_rate ?? 0;
+const passRateEl = document.getElementById('contractPassRate');
+const passRateValue = (passRate * 100).toFixed(1);
+passRateEl.textContent = `${passRateValue}%`;
+passRateEl.className = 'metric-value ' + (passRate >= 0.95 ? 'good' : passRate >= 0.8 ? 'warning' : passRate > 0 ? 'bad' : '');
 
-      // Replay Queue Size
-      const queueSize = replayQueue?.queue_size ?? 0;
-      document.getElementById('replayQueueSize').textContent = queueSize;
-      document.getElementById('replayQueueSize').className = 'metric-value ' + (queueSize === 0 ? '' : queueSize > 5 ? 'warning' : '');
+const valid = contractResults?.contract_valid ?? 0;
+const invalid = contractResults?.contract_invalid ?? 0;
+document.getElementById('contractSub').textContent = `${valid} valid, ${invalid} invalid`;
 
-      const oldestAge = replayQueue?.oldest_event_age_seconds ?? 0;
-      document.getElementById('replayQueueAge').textContent = 
-        queueSize > 0 ? `Oldest: ${formatAge(oldestAge)}` : 'Queue empty';
-    }
+// Idempotency Score
+const idemScore = idempotencyMetrics?.idempotency_score ?? 1;
+const idemScoreEl = document.getElementById('idempotencyScore');
+idemScoreEl.textContent = `${(idemScore * 100).toFixed(0)}%`;
+idemScoreEl.className = 'metric-value ' + (idemScore >= 1 ? 'good' : 'warning');
 
-    // Update event queue
-    function updateEventQueue() {
-      const queue = document.getElementById('eventQueue');
-      
-      // Build events list from recent duplicates and contract results
-      events = [];
+const dupDetected = idempotencyMetrics?.duplicates_detected ?? 0;
+const dupSkipped = idempotencyMetrics?.duplicates_correctly_skipped ?? 0;
+document.getElementById('idempotencySub').textContent =
+dupDetected > 0 ? `${dupDetected} duplicates, ${dupSkipped} skipped` : 'No duplicates yet';
 
-      // Add recent duplicates
-      if (idempotencyMetrics?.recent_duplicates) {
-        idempotencyMetrics.recent_duplicates.forEach(dup => {
-          events.push({
-            id: dup.event_id,
-            type: 'duplicate',
-            contract_status: 'valid',
-            processing_status: 'duplicate',
-            receive_count: dup.received_count,
-            first_processed: dup.first_received,
-            timestamp: dup.last_received
-          });
-        });
-      }
+// Replay Queue Size
+const queueSize = replayQueue?.queue_size ?? 0;
+document.getElementById('replayQueueSize').textContent = queueSize;
+document.getElementById('replayQueueSize').className = 'metric-value ' + (queueSize === 0 ? '' : queueSize > 5 ? 'warning' : '');
 
-      // Add replay queue events
-      if (replayQueue?.events) {
-        replayQueue.events.forEach(evt => {
-          events.push({
-            id: evt.event_id,
-            type: evt.type,
-            contract_status: 'valid',
-            processing_status: 'queued',
-            retry_count: evt.retry_count,
-            timestamp: evt.queued_at,
-            source: evt.source
-          });
-        });
-      }
+const oldestAge = replayQueue?.oldest_event_age_seconds ?? 0;
+document.getElementById('replayQueueAge').textContent =
+queueSize > 0 ? `Oldest: ${formatAge(oldestAge)}` : 'Queue empty';
+}
 
-      // Add events from contract results
-      if (contractResults?.violations) {
-        contractResults.violations.forEach(v => {
-          if (!events.find(e => e.id === v.webhook_id)) {
-            events.push({
-              id: v.webhook_id,
-              type: 'unknown',
-              contract_status: 'invalid',
-              processing_status: 'rejected',
-              error: v.error,
-              error_field: v.field
-            });
-          }
-        });
-      }
+// Update event queue
+function updateEventQueue() {
+const queue = document.getElementById('eventQueue');
 
-      // Sort: invalid first, then duplicate, then replay, then valid
-      const sortOrder = { invalid: 0, duplicate: 1, queued: 2, processed: 3 };
-      events.sort((a, b) => {
-        const aOrder = sortOrder[a.processing_status] ?? 4;
-        const bOrder = sortOrder[b.processing_status] ?? 4;
-        return aOrder - bOrder;
-      });
+// Build events list from recent duplicates and contract results
+events = [];
 
-      if (events.length === 0) {
-        queue.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">No events yet</div>';
-        return;
-      }
+// Add recent duplicates
+if (idempotencyMetrics?.recent_duplicates) {
+idempotencyMetrics.recent_duplicates.forEach(dup => {
+events.push({
+id: dup.event_id,
+type: dup.type || 'duplicate',
+contract_status: 'valid',
+processing_status: 'duplicate',
+receive_count: dup.received_count,
+first_processed: dup.first_received,
+timestamp: dup.last_received,
+source: dup.source || 'webhook-provider'
+});
+});
+}
 
-      queue.innerHTML = events.map(evt => {
-        const statusClass = evt.processing_status === 'duplicate' ? 'duplicate' :
-                           evt.processing_status === 'queued' ? 'replay' :
-                           evt.contract_status === 'invalid' ? 'invalid' : 'valid';
-        
-        const selectedClass = evt.id === selectedEventId ? 'selected' : '';
-        
-        return `
-          <div class="event-card ${statusClass} ${selectedClass}" onclick="selectEvent('${evt.id}')">
-            <div class="event-card-header">
-              <span class="event-id">${evt.id}</span>
-              <span class="event-type-badge">${evt.type || 'unknown'}</span>
-            </div>
-            <div class="event-meta">${formatTimestamp(evt.timestamp)}</div>
-            <div class="event-status">
-              <span class="status-tag ${evt.contract_status === 'invalid' ? 'invalid' : 'valid'}">${evt.contract_status}</span>
-              <span class="status-tag ${statusClass}">${evt.processing_status}</span>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
+// Add replay queue events
+if (replayQueue?.events) {
+replayQueue.events.forEach(evt => {
+events.push({
+id: evt.event_id,
+type: evt.type,
+contract_status: 'valid',
+processing_status: 'queued',
+retry_count: evt.retry_count,
+timestamp: evt.queued_at,
+source: evt.source,
+status: evt.status
+});
+});
+}
 
-    // Update replay panel
-    function updateReplayPanel() {
-      const countEl = document.getElementById('replayCount');
-      const ageEl = document.getElementById('replayAge');
-      const eventsEl = document.getElementById('replayEvents');
+// Add events from contract results
+if (contractResults?.violations) {
+contractResults.violations.forEach(v => {
+if (!events.find(e => e.id === v.webhook_id)) {
+events.push({
+id: v.webhook_id,
+type: v.type || 'unknown',
+contract_status: 'invalid',
+processing_status: 'rejected',
+error: v.error,
+error_field: v.field,
+timestamp: v.received_at || new Date().toISOString(),
+source: v.source || 'webhook-provider'
+});
+}
+});
+}
 
-      const queueSize = replayQueue?.queue_size ?? 0;
-      countEl.textContent = queueSize;
-      
-      const oldestAge = replayQueue?.oldest_event_age_seconds ?? 0;
-      ageEl.textContent = queueSize > 0 ? `oldest: ${formatAge(oldestAge)}` : 'events pending';
+// Add valid processed events from contract results
+if (contractResults?.results) {
+contractResults.results.forEach(r => {
+if (r.contract_valid && !events.find(e => e.id === r.event_id)) {
+events.push({
+id: r.event_id,
+type: r.type || 'unknown',
+contract_status: 'valid',
+processing_status: 'processed',
+timestamp: r.received_at,
+source: r.source || 'webhook-provider'
+});
+}
+});
+}
 
-      if (!replayQueue?.events || replayQueue.events.length === 0) {
-        eventsEl.innerHTML = '<div style="color: var(--text-muted); font-size: 11px; padding: 8px 0;">Queue empty</div>';
-        return;
-      }
+// Sort: invalid first, then duplicate, then replay, then valid
+const sortOrder = { invalid: 0, rejected: 0, duplicate: 1, queued: 2, processed: 3 };
+events.sort((a, b) => {
+const aOrder = sortOrder[a.processing_status] ?? sortOrder[a.contract_status] ?? 4;
+const bOrder = sortOrder[b.processing_status] ?? sortOrder[b.contract_status] ?? 4;
+return aOrder - bOrder;
+});
 
-      eventsEl.innerHTML = replayQueue.events.map(evt => {
-        const age = Math.floor((Date.now() - new Date(evt.queued_at).getTime()) / 1000);
-        return `
-          <div class="replay-event">
-            <div class="replay-event-header">
-              <span class="replay-event-id">${evt.event_id}</span>
-              <span class="replay-event-age">${formatAge(age)}</span>
-            </div>
-            <div class="replay-event-meta">
-              ${evt.type} | retry #${evt.retry_count} | ${evt.status}
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
+// Update queue count
+document.getElementById('queue-count').textContent = `${events.length} event${events.length !== 1 ? 's' : ''} in queue`;
 
-    // Select event
-    function selectEvent(eventId) {
-      selectedEventId = eventId;
-      const event = events.find(e => e.id === eventId);
-      if (event) {
-        renderEventDetail(event);
-        updateEventQueue();
-      }
-    }
+if (events.length === 0) {
+queue.innerHTML = `
+<div class="empty-state">
+<div class="empty-state-icon">📋</div>
+<div class="empty-state-title">No events yet</div>
+<div class="empty-state-desc">Use the <strong>Live Simulation</strong> buttons to generate webhook events and test contract validation.</div>
+</div>
+`;
+return;
+}
 
-    // Render event detail
-    function renderEventDetail(evt) {
-      document.getElementById('emptyState').style.display = 'none';
-      const detail = document.getElementById('eventDetail');
-      detail.style.display = 'block';
+queue.innerHTML = events.map(evt => {
+const statusClass = evt.processing_status === 'duplicate' ? 'duplicate' :
+evt.processing_status === 'queued' ? 'replay' :
+evt.contract_status === 'invalid' ? 'invalid' : 'valid';
 
-      // Build contract validation fields
-      const validationFields = [
-        { name: 'ID present', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'id', value: evt.id },
-        { name: 'Type valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'type', value: evt.type || 'unknown' },
-        { name: 'Timestamp valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'timestamp', value: evt.timestamp ? 'present' : 'missing' },
-        { name: 'Signature valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'signature', value: 'verified' },
-        { name: 'Timestamp fresh', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'freshness', value: 'within window' }
-      ];
+const selectedClass = evt.id === selectedEventId ? 'selected' : '';
 
-      const validationHTML = validationFields.map(f => `
+const severityLabel = evt.contract_status === 'invalid' ? 'INVALID' :
+evt.processing_status === 'duplicate' ? 'DUP' :
+evt.processing_status === 'queued' ? 'QUEUED' : 'VALID';
+
+const typeDisplay = evt.type || 'unknown';
+const timeDisplay = formatTimeShort(evt.timestamp);
+
+return `
+<div class="event-card ${statusClass} ${selectedClass}" onclick="selectEvent('${evt.id}')">
+<div class="card-header">
+<span class="card-id">${evt.id}</span>
+<span class="card-severity ${statusClass}">${severityLabel}</span>
+</div>
+<div class="card-title">${typeDisplay}</div>
+<div class="card-meta">
+<span class="card-meta-item">${timeDisplay}</span>
+<span class="card-meta-item">${evt.source || 'unknown'}</span>
+</div>
+<div class="card-trust-markers">
+<span class="trust-chip">${evt.contract_status}</span>
+<span class="trust-chip">${evt.processing_status}</span>
+${evt.receive_count ? `<span class="trust-chip">${evt.receive_count}x received</span>` : ''}
+${evt.retry_count !== undefined ? `<span class="trust-chip">retry #${evt.retry_count}</span>` : ''}
+</div>
+</div>
+`;
+}).join('');
+}
+
+// Update replay panel
+function updateReplayPanel() {
+const countEl = document.getElementById('replayCount');
+const ageEl = document.getElementById('replayAge');
+const eventsEl = document.getElementById('replayEvents');
+
+const queueSize = replayQueue?.queue_size ?? 0;
+countEl.textContent = queueSize;
+
+const oldestAge = replayQueue?.oldest_event_age_seconds ?? 0;
+ageEl.textContent = queueSize > 0 ? `oldest: ${formatAge(oldestAge)}` : 'events pending';
+
+if (!replayQueue?.events || replayQueue.events.length === 0) {
+eventsEl.innerHTML = '<div style="color: var(--text-muted); font-size: 0.75rem; padding: 0.5rem 0;">Queue empty</div>';
+return;
+}
+
+eventsEl.innerHTML = replayQueue.events.map(evt => {
+const age = Math.floor((Date.now() - new Date(evt.queued_at).getTime()) / 1000);
+return `
+<div class="replay-event">
+<div class="replay-event-header">
+<span class="replay-event-id">${evt.event_id}</span>
+<span class="replay-event-age">${formatAge(age)}</span>
+</div>
+<div class="replay-event-meta">
+${evt.type} | retry #${evt.retry_count} | ${evt.status}
+</div>
+</div>
+`;
+}).join('');
+}
+
+// Select event
+function selectEvent(eventId) {
+selectedEventId = eventId;
+const event = events.find(e => e.id === eventId);
+if (event) {
+renderEventDetail(event);
+updateEventQueue();
+}
+}
+
+// Render event detail
+function renderEventDetail(evt) {
+  document.getElementById('emptyState').style.display = 'none';
+  const detail = document.getElementById('eventDetail');
+  detail.style.display = 'block';
+
+  // Get full validation details from contract results if available
+  const contractResult = contractResults?.results?.find(r => r.event_id === evt.id);
+  const validationDetails = contractResult?.validation_details || evt.validation_details;
+
+  // Build contract validation fields with actual validation_details
+  let validationHTML = '';
+  if (validationDetails) {
+    const fields = [
+      { key: 'id_present', name: 'ID present', value: evt.id },
+      { key: 'type_valid', name: 'Type valid', value: evt.type || 'unknown', errorKey: 'type_error' },
+      { key: 'timestamp_valid', name: 'Timestamp valid', value: evt.timestamp ? 'present' : 'missing', errorKey: 'timestamp_error' },
+      { key: 'signature_valid', name: 'Signature valid', value: 'verified', errorKey: 'signature_error' },
+      { key: 'timestamp_fresh', name: 'Timestamp fresh', value: 'within window', errorKey: 'timestamp_fresh_error' }
+    ];
+
+    validationHTML = fields.map(f => {
+      const pass = validationDetails[f.key] !== false;
+      const error = !pass && validationDetails[f.errorKey] ? validationDetails[f.errorKey] : null;
+      return `
         <div class="validation-field">
-          <span class="validation-icon ${f.pass ? 'pass' : 'fail'}">${f.pass ? '&#10003;' : '&#10007;'}</span>
+          <span class="validation-icon ${pass ? 'pass' : 'fail'}">${pass ? '✓' : '✗'}</span>
           <div class="validation-content">
-            <div class="validation-field-name">${f.name}: ${f.value}</div>
-            ${!f.pass ? `<div class="validation-error">${evt.error || 'Validation failed'}</div>` : ''}
+            <div class="validation-field-name">${f.name}: <span class="mono">${f.value}</span></div>
+            ${error ? `<div class="validation-error">${error}</div>` : ''}
           </div>
-        </div>
-      `).join('');
-
-      // Build idempotency section if duplicate
-      let idempotencyHTML = '';
-      if (evt.processing_status === 'duplicate') {
-        idempotencyHTML = `
-          <div class="detail-section">
-            <div class="detail-section-title">Idempotency Check</div>
-            <div class="idempotency-block">
-              <div class="idempotency-header">Duplicate Detected</div>
-              <div class="detail-row">
-                <span class="detail-label">Event ID</span>
-                <span class="detail-value">${evt.id}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">First processed</span>
-                <span class="detail-value">${formatTimestamp(evt.first_processed)}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Receive count</span>
-                <span class="detail-value">${evt.receive_count || 1}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Processed</span>
-                <span class="detail-value">NO (duplicate)</span>
-              </div>
-              <div class="idempotency-result">Result: SKIPPED (idempotency working)</div>
-            </div>
-          </div>
-        `;
-      }
-
-      // Build replay status if queued
-      let replayHTML = '';
-      if (evt.processing_status === 'queued') {
-        replayHTML = `
-          <div class="detail-section">
-            <div class="detail-section-title">Replay Status</div>
-            <div class="detail-row">
-              <span class="detail-label">Status</span>
-              <span class="detail-value">${evt.status || 'pending'}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Retry count</span>
-              <span class="detail-value">${evt.retry_count ?? 0}</span>
-            </div>
-            <div class="detail-row">
-              <span class="detail-label">Source</span>
-              <span class="detail-value">${evt.source || 'unknown'}</span>
-            </div>
-          </div>
-        `;
-      }
-
-      detail.innerHTML = `
-        <div class="detail-section">
-          <div class="detail-section-title">Event Header</div>
-          <div class="detail-row">
-            <span class="detail-label">Event ID</span>
-            <span class="detail-value">${evt.id}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Type</span>
-            <span class="detail-value">${evt.type || 'unknown'}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Timestamp</span>
-            <span class="detail-value">${formatTimestamp(evt.timestamp)}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Contract Status</span>
-            <span class="detail-value">${evt.contract_status}</span>
-          </div>
-          <div class="detail-row">
-            <span class="detail-label">Processing Status</span>
-            <span class="detail-value">${evt.processing_status}</span>
-          </div>
-        </div>
-
-        <div class="detail-section">
-          <div class="detail-section-title">Contract Validation</div>
-          ${validationHTML}
-          <div class="validation-result-badge ${evt.contract_status}">${evt.contract_status.toUpperCase()}</div>
-        </div>
-
-        ${idempotencyHTML}
-        ${replayHTML}
-
-        <div class="detail-section">
-          <div class="detail-section-title">Payload Preview</div>
-          <div class="payload-preview">${JSON.stringify({ id: evt.id, type: evt.type, timestamp: evt.timestamp }, null, 2)}</div>
         </div>
       `;
-    }
+    }).join('');
+  } else {
+    // Fallback to basic validation display
+    const validationFields = [
+      { name: 'ID present', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'id', value: evt.id },
+      { name: 'Type valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'type', value: evt.type || 'unknown' },
+      { name: 'Timestamp valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'timestamp', value: evt.timestamp ? 'present' : 'missing' },
+      { name: 'Signature valid', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'signature', value: 'verified' },
+      { name: 'Timestamp fresh', pass: evt.contract_status !== 'invalid' || evt.error_field !== 'freshness', value: 'within window' }
+    ];
 
-    // Simulation handlers
-    async function simulateValid() {
-      setButtonLoading('btnValid', true);
-      try {
-        await apiPost('/api/simulate/valid');
-        await loadAllData();
-      } catch (e) {
-        console.error('Error:', e);
-      }
-      setButtonLoading('btnValid', false);
-    }
+    validationHTML = validationFields.map(f => `
+      <div class="validation-field">
+        <span class="validation-icon ${f.pass ? 'pass' : 'fail'}">${f.pass ? '✓' : '✗'}</span>
+        <div class="validation-content">
+          <div class="validation-field-name">${f.name}: <span class="mono">${f.value}</span></div>
+          ${!f.pass ? `<div class="validation-error">${evt.error || 'Validation failed'}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
 
-    async function simulateDuplicate() {
-      setButtonLoading('btnDuplicate', true);
-      try {
-        const result = await apiPost('/api/simulate/duplicate');
-        await loadAllData();
-      } catch (e) {
-        console.error('Error:', e);
-      }
-      setButtonLoading('btnDuplicate', false);
-    }
+  // Build idempotency section if duplicate
+  let idempotencyHTML = '';
+  if (evt.processing_status === 'duplicate') {
+    const idemData = idempotencyMetrics?.processed_events?.find(e => e.event_id === evt.id);
+    idempotencyHTML = `
+      <div class="detail-section">
+        <div class="detail-section-title">Idempotency Check</div>
+        <div class="idempotency-block">
+          <div class="idempotency-header">⚠ Duplicate Detected</div>
+          <div class="detail-row">
+            <span class="detail-label">Event ID</span>
+            <span class="detail-value mono">${evt.id}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">First processed</span>
+            <span class="detail-value mono">${formatTimestamp(evt.first_processed || idemData?.first_processed_at)}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">This receipt</span>
+            <span class="detail-value mono">${formatTimestamp(evt.timestamp || idemData?.last_received_at)}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Receive count</span>
+            <span class="detail-value">${evt.receive_count || idemData?.receive_count || 1}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Processed</span>
+            <span class="detail-value" style="color: var(--status-duplicate);">NO (duplicate)</span>
+          </div>
+          ${idemData?.payload_hash ? `
+          <div class="detail-row">
+            <span class="detail-label">Payload hash</span>
+            <span class="detail-value mono" style="font-size: 0.6875rem;">${idemData.payload_hash.substring(0, 24)}...</span>
+          </div>
+          ` : ''}
+          <div class="idempotency-result">✓ Result: SKIPPED (idempotency working)</div>
+        </div>
+      </div>
+    `;
+  }
 
-    async function simulateOutOfOrder() {
-      setButtonLoading('btnOutOfOrder', true);
-      try {
-        await apiPost('/api/simulate/out-of-order');
-        await loadAllData();
-      } catch (e) {
-        console.error('Error:', e);
-      }
-      setButtonLoading('btnOutOfOrder', false);
-    }
+  // Build replay status if queued
+  let replayHTML = '';
+  if (evt.processing_status === 'queued') {
+    const replayData = replayQueue?.events?.find(e => e.event_id === evt.id);
+    const ageSeconds = replayData?.age_seconds || Math.floor((Date.now() - new Date(evt.timestamp).getTime()) / 1000);
+    replayHTML = `
+      <div class="detail-section">
+        <div class="detail-section-title">Replay Status</div>
+        <div class="replay-status-block">
+          <div class="detail-row">
+            <span class="detail-label">Status</span>
+            <span class="detail-value" style="color: var(--status-queued);">${(evt.status || replayData?.status || 'pending').toUpperCase()}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Original timestamp</span>
+            <span class="detail-value mono">${formatTimestamp(evt.original_timestamp || replayData?.original_timestamp || evt.timestamp)}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Current age</span>
+            <span class="detail-value">${formatAge(ageSeconds)} old</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Retry count</span>
+            <span class="detail-value">${evt.retry_count ?? replayData?.retry_count ?? 0}</span>
+          </div>
+          ${replayData?.last_error ? `
+          <div class="detail-row">
+            <span class="detail-label">Last error</span>
+            <span class="detail-value" style="color: var(--status-invalid);">${replayData.last_error}</span>
+          </div>
+          ` : ''}
+          ${replayData?.next_retry_at ? `
+          <div class="detail-row">
+            <span class="detail-label">Next retry</span>
+            <span class="detail-value mono">${formatTimestamp(replayData.next_retry_at)}</span>
+          </div>
+          ` : ''}
+          <div class="detail-row">
+            <span class="detail-label">Source</span>
+            <span class="detail-value">${evt.source || replayData?.source || 'unknown'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
-    async function simulateDropped() {
-      setButtonLoading('btnDropped', true);
-      try {
-        await apiPost('/api/simulate/dropped');
-        await loadAllData();
-      } catch (e) {
-        console.error('Error:', e);
-      }
-      setButtonLoading('btnDropped', false);
-    }
+  // Build ordering evidence if out-of-order event
+  let orderingHTML = '';
+  if (evt.sequence || evt.held_until) {
+    orderingHTML = `
+      <div class="detail-section">
+        <div class="detail-section-title">Ordering Evidence</div>
+        <div class="ordering-block">
+          <div class="detail-row">
+            <span class="detail-label">Sequence</span>
+            <span class="detail-value">#${evt.sequence}</span>
+          </div>
+          ${evt.held_until ? `
+          <div class="detail-row">
+            <span class="detail-label">Held until</span>
+            <span class="detail-value mono">${formatTimestamp(evt.held_until)}</span>
+          </div>
+          ` : ''}
+          ${evt.processed_at ? `
+          <div class="detail-row">
+            <span class="detail-label">Processed at</span>
+            <span class="detail-value mono">${formatTimestamp(evt.processed_at)}</span>
+          </div>
+          ` : ''}
+          ${evt.processing_order ? `
+          <div class="detail-row">
+            <span class="detail-label">Processing order</span>
+            <span class="detail-value mono">${evt.processing_order.join(' → ')}</span>
+          </div>
+          ` : ''}
+          <div class="ordering-result">✓ Correct order maintained</div>
+        </div>
+      </div>
+    `;
+  }
 
-    async function runContractTests() {
-      setButtonLoading('btnTests', true);
-      try {
-        await apiPost('/api/run-contract-tests');
-        await loadAllData();
-      } catch (e) {
-        console.error('Error:', e);
-      }
-      setButtonLoading('btnTests', false);
-    }
+  // Build payload preview
+  const payloadData = evt.payload || {
+    id: evt.id,
+    type: evt.type,
+    timestamp: evt.timestamp,
+    source: evt.source,
+    data: evt.data || {}
+  };
 
-    async function generateReport() {
-      setButtonLoading('btnReport', true);
-      try {
-        await apiPost('/api/generate-report');
-        await loadAllData();
-      } catch (e) {
-        console.error('Error:', e);
-      }
-      setButtonLoading('btnReport', false);
-    }
+  // Build artifact links
+  const artifactLinksHTML = `
+    <div class="detail-section">
+      <div class="detail-section-title">Raw Artifacts</div>
+      <div class="artifact-links">
+        <a href="/api/contract-results" target="_blank" class="artifact-link">contract-results.json</a>
+        <a href="/api/idempotency-metrics" target="_blank" class="artifact-link">idempotency-store.json</a>
+        <a href="/api/replay-queue" target="_blank" class="artifact-link">replay-queue.json</a>
+        <a href="/api/reports" target="_blank" class="artifact-link">reports</a>
+      </div>
+    </div>
+  `;
 
-    async function resetDemo() {
-      setButtonLoading('btnReset', true);
-      try {
-        await apiPost('/api/reset');
-        selectedEventId = null;
-        document.getElementById('emptyState').style.display = 'flex';
-        document.getElementById('eventDetail').style.display = 'none';
-        await loadAllData();
-      } catch (e) {
-        console.error('Error:', e);
-      }
-      setButtonLoading('btnReset', false);
-    }
+  detail.innerHTML = `
+    <div class="detail-section">
+      <div class="detail-section-title">Event Header</div>
+      <div class="detail-row">
+        <span class="detail-label">Event ID</span>
+        <span class="detail-value mono">${evt.id}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Type</span>
+        <span class="detail-value">${evt.type || 'unknown'}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Timestamp</span>
+        <span class="detail-value mono">${formatTimestamp(evt.timestamp)}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Source</span>
+        <span class="detail-value">${evt.source || 'unknown'}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Contract Status</span>
+        <span class="detail-value" style="color: var(--status-${evt.contract_status === 'invalid' ? 'invalid' : 'valid'});">${evt.contract_status.toUpperCase()}</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Processing Status</span>
+        <span class="detail-value" style="color: var(--status-${evt.processing_status === 'duplicate' ? 'duplicate' : evt.processing_status === 'queued' ? 'queued' : evt.contract_status === 'invalid' ? 'invalid' : 'valid'});">${evt.processing_status.toUpperCase()}</span>
+      </div>
+    </div>
 
-    // Helper: Set button loading state
-    function setButtonLoading(btnId, loading) {
-      const btn = document.getElementById(btnId);
-      if (loading) {
-        btn.disabled = true;
-        btn.classList.add('btn-loading');
-      } else {
-        btn.disabled = false;
-        btn.classList.remove('btn-loading');
-      }
-    }
+    <div class="detail-section">
+      <div class="detail-section-title">Contract Validation</div>
+      ${validationHTML}
+      <div class="validation-result-badge ${evt.contract_status}">${evt.contract_status.toUpperCase()}</div>
+    </div>
 
-    // Helper: Format timestamp
-    function formatTimestamp(ts) {
-      if (!ts) return 'N/A';
-      try {
-        return new Date(ts).toLocaleString();
-      } catch {
-        return ts;
-      }
-    }
+    ${idempotencyHTML}
+    ${replayHTML}
+    ${orderingHTML}
 
-    // Helper: Format age
-    function formatAge(seconds) {
-      if (seconds < 60) return `${seconds}s`;
-      if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-      return `${Math.floor(seconds / 3600)}h`;
-    }
+    <div class="detail-section">
+      <div class="detail-section-title">Payload Preview</div>
+      <div class="payload-preview">${JSON.stringify(payloadData, null, 2)}</div>
+    </div>
 
-    // Initialize
-    loadAllData();
-    // Auto-refresh every 5 seconds
-    setInterval(loadAllData, 5000);
-  </script>
+    ${artifactLinksHTML}
+  `;
+}
+
+// Simulation handlers
+async function simulateValid() {
+setButtonLoading('btnValid', true);
+try {
+await apiPost('/api/simulate/valid');
+await loadAllData();
+} catch (e) {
+console.error('Error:', e);
+}
+setButtonLoading('btnValid', false);
+}
+
+async function simulateDuplicate() {
+setButtonLoading('btnDuplicate', true);
+try {
+const result = await apiPost('/api/simulate/duplicate');
+await loadAllData();
+} catch (e) {
+console.error('Error:', e);
+}
+setButtonLoading('btnDuplicate', false);
+}
+
+async function simulateOutOfOrder() {
+setButtonLoading('btnOutOfOrder', true);
+try {
+await apiPost('/api/simulate/out-of-order');
+await loadAllData();
+} catch (e) {
+console.error('Error:', e);
+}
+setButtonLoading('btnOutOfOrder', false);
+}
+
+async function simulateDropped() {
+setButtonLoading('btnDropped', true);
+try {
+await apiPost('/api/simulate/dropped');
+await loadAllData();
+} catch (e) {
+console.error('Error:', e);
+}
+setButtonLoading('btnDropped', false);
+}
+
+async function runContractTests() {
+setButtonLoading('btnTests', true);
+try {
+await apiPost('/api/run-contract-tests');
+await loadAllData();
+} catch (e) {
+console.error('Error:', e);
+}
+setButtonLoading('btnTests', false);
+}
+
+async function generateReport() {
+setButtonLoading('btnReport', true);
+try {
+await apiPost('/api/generate-report');
+await loadAllData();
+} catch (e) {
+console.error('Error:', e);
+}
+setButtonLoading('btnReport', false);
+}
+
+async function resetDemo() {
+if (!confirm('Clear all events and reset demo state?')) return;
+setButtonLoading('btnReset', true);
+try {
+await apiPost('/api/reset');
+selectedEventId = null;
+document.getElementById('emptyState').style.display = 'flex';
+document.getElementById('eventDetail').style.display = 'none';
+await loadAllData();
+} catch (e) {
+console.error('Error:', e);
+}
+setButtonLoading('btnReset', false);
+}
+
+// Helper: Set button loading state
+function setButtonLoading(btnId, loading) {
+const btn = document.getElementById(btnId);
+if (loading) {
+btn.disabled = true;
+btn.classList.add('loading');
+} else {
+btn.disabled = false;
+btn.classList.remove('loading');
+}
+}
+
+// Helper: Format timestamp
+function formatTimestamp(ts) {
+if (!ts) return 'N/A';
+try {
+return new Date(ts).toLocaleString();
+} catch {
+return ts;
+}
+}
+
+// Helper: Format time short
+function formatTimeShort(ts) {
+if (!ts) return 'N/A';
+try {
+return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+} catch {
+return ts;
+}
+}
+
+// Helper: Format age
+function formatAge(seconds) {
+if (seconds < 60) return `${seconds}s`;
+if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+return `${Math.floor(seconds / 3600)}h`;
+}
+
+// Initialize
+loadAllData();
+// Auto-refresh every 3 seconds (matching repo-01)
+setInterval(loadAllData, 3000);
+</script>
 </body>
 </html>

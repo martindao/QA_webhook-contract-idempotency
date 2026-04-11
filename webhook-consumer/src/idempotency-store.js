@@ -22,11 +22,12 @@ function isProcessed(eventId) {
  */
 function markProcessed(eventId, payload) {
   const store = getIdempotencyStore();
-  const payloadHash = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  // Use sha256: prefix convention as per ARTIFACT_SCHEMA.md
+  const payloadHash = 'sha256:' + crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   const now = new Date().toISOString();
-  
+
   const existingIndex = store.processed_events.findIndex(e => e.event_id === eventId);
-  
+
   if (existingIndex === -1) {
     // New event - create entry
     const eventRecord = {
@@ -39,7 +40,7 @@ function markProcessed(eventId, payload) {
       payload_hash: payloadHash,
       data: payload.data || {}
     };
-    
+
     store.processed_events.push(eventRecord);
     store.total_unique_events++;
   } else {
@@ -48,14 +49,23 @@ function markProcessed(eventId, payload) {
     existing.last_received_at = now;
     existing.receive_count++;
     store.total_duplicates_skipped++;
-    
-    // Check for payload mismatch
+
+    // Check for payload mismatch - this is an integrity warning
     if (existing.payload_hash !== payloadHash) {
-      console.warn(`[idempotency] Event ${eventId} received with different payload, keeping original`);
-      // Don't update payload_hash or data - keep original
+      // Track payload hash mismatches for integrity monitoring
+      if (!existing.payload_hash_mismatches) {
+        existing.payload_hash_mismatches = [];
+      }
+      existing.payload_hash_mismatches.push({
+        received_at: now,
+        expected_hash: existing.payload_hash,
+        received_hash: payloadHash
+      });
+      console.warn(`[idempotency] INTEGRITY WARNING: Event ${eventId} received with different payload hash. Expected: ${existing.payload_hash}, Received: ${payloadHash}`);
+      // Don't update payload_hash or data - keep original to preserve integrity
     }
   }
-  
+
   saveIdempotencyStore(store);
   return store.processed_events.find(e => e.event_id === eventId);
 }

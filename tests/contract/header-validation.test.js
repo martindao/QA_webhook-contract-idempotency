@@ -15,7 +15,7 @@ describe('Contract Validator - Header Validation', () => {
       const result = validateContract(payload, headers, secret);
 
       expect(result.valid).toBe(true);
-      expect(result.details.signature_valid).toBe(true);
+      expect(result.validation_details.signature_valid).toBe(true);
     });
 
     it('should fail when X-Webhook-Signature is missing', () => {
@@ -26,6 +26,7 @@ describe('Contract Validator - Header Validation', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.find(e => e.error.includes('Missing required header'))).toBeDefined();
+      expect(result.validation_details.signature_error).toBeDefined();
     });
 
     it('should handle case-insensitive header lookup', () => {
@@ -36,7 +37,7 @@ describe('Contract Validator - Header Validation', () => {
 
       const result = validateContract(payload, headers, secret);
 
-      expect(result.details.signature_valid).toBe(true);
+      expect(result.validation_details.signature_valid).toBe(true);
     });
   });
 
@@ -48,6 +49,7 @@ describe('Contract Validator - Header Validation', () => {
       const result = validateContract(payload, headers, secret);
 
       expect(result.valid).toBe(false);
+      expect(result.validation_details.signature_valid).toBe(false);
     });
   });
 });

@@ -582,3 +582,51 @@ A QA hiring manager should:
 6. Decide to interview within 5 minutes
 
 If the repo just looks like "a webhook receiver", it failed. It must look like an INTEGRATION RELIABILITY FRAMEWORK.
+
+## Additional Deliverable Requirement
+
+The builder must create these extra files before calling the repo complete:
+
+- `PORTFOLIO_INTEGRATION.md`
+- `SCREENSHOT_PLAN.md`
+
+### `PORTFOLIO_INTEGRATION.md` must include
+- canonical project title
+- role family (SUP / QA / SEC / DATA / CFT)
+- homepage card title
+- one-sentence homepage description
+- category label
+- tag list
+- GitHub CTA label
+- demo-page requirements
+- SVG artwork direction
+
+### `SCREENSHOT_PLAN.md` must include
+- 3-5 required screenshot/GIF shots
+- exact UI states to capture
+- one hero/cover image recommendation for the portfolio page
+
+## Final Locked Reference Repos (Do Not Replace Casually)
+
+### Primary GitHub references
+- `https://github.com/hookdeck/webhook-skills`
+  - Use for: signature verification and provider webhook handling patterns
+- `https://github.com/keploy/keploy`
+  - Use for: replay/mocking/integration test inspiration
+- `https://github.com/brightdata/bright-data-unlock-webhook-demo`
+  - Use for: lightweight webhook receiver structure only
+
+### Secondary inspiration
+- `https://github.com/ar27111994/webhook-debugger-logger`
+  - Use for: inspection/debug UX ideas
+- `https://github.com/adyen-examples/adyen-react-online-payments`
+  - Use for: webhook processing realism and HMAC flow ideas
+
+### What to borrow
+- signature verification patterns
+- replay / retry / dropped-event ideas
+- event inspection UX
+
+### What not to copy literally
+- full debugger products
+- payment/product-specific checkout UI

@@ -12,27 +12,29 @@ const MAX_AGE_SECONDS = 86400; // 24 hours
  */
 function addToQueue(event) {
   const queue = getReplayQueue();
-  
+
   // Don't add duplicates
   if (queue.events.find(e => e.event_id === event.id)) {
     return null;
   }
-  
+
+  const now = new Date();
   const entry = {
     event_id: event.id,
     type: event.type,
     original_timestamp: event.timestamp,
-    queued_at: new Date().toISOString(),
+    queued_at: now.toISOString(),
     source: event.source || 'unknown',
     retry_count: 0,
     status: 'pending',
     last_error: null,
+    next_retry_at: null, // Will be set when retry is scheduled
     payload: event
   };
-  
+
   queue.events.push(entry);
   saveReplayQueue(queue);
-  
+
   return entry;
 }
 
@@ -70,16 +72,27 @@ function getQueueSize() {
 function markReplayed(eventId, success, error = null) {
   const queue = getReplayQueue();
   const entry = queue.events.find(e => e.event_id === eventId);
-  
+
   if (entry) {
     entry.status = success ? 'succeeded' : 'failed';
     entry.retry_count++;
     if (error) {
       entry.last_error = error;
     }
+    // If failed, schedule next retry with exponential backoff
+    if (!success) {
+      entry.status = 'retrying';
+      // Exponential backoff: 1min, 2min, 4min, 8min, etc. (capped at 1 hour)
+      const backoffMinutes = Math.min(Math.pow(2, entry.retry_count), 60);
+      const nextRetry = new Date(Date.now() + backoffMinutes * 60 * 1000);
+      entry.next_retry_at = nextRetry.toISOString();
+    } else {
+      // Success - clear next_retry_at
+      entry.next_retry_at = null;
+    }
     saveReplayQueue(queue);
   }
-  
+
   return entry;
 }
 

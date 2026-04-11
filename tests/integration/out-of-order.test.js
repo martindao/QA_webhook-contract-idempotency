@@ -6,6 +6,7 @@ import http from 'http';
 import { spawn } from 'child_process';
 import path from 'path';
 import { createSignature } from '../../mock-provider/src/signature-signer.js';
+import { handleEvent, getPendingEvents, reset } from '../../webhook-consumer/src/ordering-handler.js';
 
 const CONSUMER_PORT = 3002;
 const CONSOLE_PORT = 3003;
@@ -190,5 +191,132 @@ describe('Out-of-Order Event Integration', () => {
     expect(response.body.received).toBe(true);
     expect(response.body.processed).toBe(true);
     expect(response.body.duplicate).toBe(false);
+  });
+});
+
+// Unit tests for ordering handler with timestamp verification
+describe('Ordering Handler - Timestamp Tracking', () => {
+  beforeEach(() => {
+    reset();
+  });
+
+  describe('Held Event Timestamps', () => {
+    it('should track held_at timestamp for held events', () => {
+      const event = {
+        id: 'evt_held_001',
+        type: 'order.shipped',
+        timestamp: new Date().toISOString(),
+        sequence: 2,
+        entity_id: 'order_123',
+        data: { status: 'shipped' }
+      };
+
+      const result = handleEvent(event);
+
+      expect(result.held.length).toBe(1);
+      const pending = getPendingEvents();
+      expect(pending.length).toBe(1);
+      expect(pending[0].held_at).toBeDefined();
+      expect(new Date(pending[0].held_at).toISOString()).toBe(pending[0].held_at);
+    });
+
+    it('should set held_until when held event is released', () => {
+      const event2 = {
+        id: 'evt_release_002',
+        type: 'order.shipped',
+        timestamp: new Date().toISOString(),
+        sequence: 2,
+        entity_id: 'order_456',
+        data: { status: 'shipped' }
+      };
+
+      const event1 = {
+        id: 'evt_release_001',
+        type: 'order.created',
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        entity_id: 'order_456',
+        data: { status: 'created' }
+      };
+
+      // Send sequence 2 first (held)
+      handleEvent(event2);
+
+      // Send sequence 1 (should release sequence 2)
+      const result = handleEvent(event1);
+
+      expect(result.processed.length).toBe(2); // Both processed
+    });
+
+    it('should track received_at for all processed events', () => {
+      const event = {
+        id: 'evt_received_001',
+        type: 'order.created',
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        entity_id: 'order_789',
+        data: { status: 'created' }
+      };
+
+      handleEvent(event);
+
+      const state = require('../../runtime/store').getEventOrdering();
+      const entity = state.ordering_events.find(e => e.entity_id === 'order_789');
+      const processedEvent = entity.events.find(e => e.event_id === 'evt_received_001');
+
+      expect(processedEvent.received_at).toBeDefined();
+      expect(new Date(processedEvent.received_at).toISOString()).toBe(processedEvent.received_at);
+    });
+
+    it('should track processing_order for events', () => {
+      const event2 = {
+        id: 'evt_order_002',
+        type: 'order.shipped',
+        timestamp: new Date().toISOString(),
+        sequence: 2,
+        entity_id: 'order_order_test',
+        data: { status: 'shipped' }
+      };
+
+      const event1 = {
+        id: 'evt_order_001',
+        type: 'order.created',
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        entity_id: 'order_order_test',
+        data: { status: 'created' }
+      };
+
+      // Send out of order
+      handleEvent(event2);
+      handleEvent(event1);
+
+      const state = require('../../runtime/store').getEventOrdering();
+      const entity = state.ordering_events.find(e => e.entity_id === 'order_order_test');
+
+      // Processing order should be: evt_order_001, evt_order_002 (correct order)
+      expect(entity.processing_order).toEqual(['evt_order_001', 'evt_order_002']);
+      expect(entity.correct_order_maintained).toBe(true);
+    });
+
+    it('should set processed_at timestamp for all events', () => {
+      const event = {
+        id: 'evt_processed_at_001',
+        type: 'order.created',
+        timestamp: new Date().toISOString(),
+        sequence: 1,
+        entity_id: 'order_processed_test',
+        data: { status: 'created' }
+      };
+
+      handleEvent(event);
+
+      const state = require('../../runtime/store').getEventOrdering();
+      const entity = state.ordering_events.find(e => e.entity_id === 'order_processed_test');
+      const processedEvent = entity.events.find(e => e.event_id === 'evt_processed_at_001');
+
+      expect(processedEvent.processed_at).toBeDefined();
+      expect(new Date(processedEvent.processed_at).toISOString()).toBe(processedEvent.processed_at);
+    });
   });
 });

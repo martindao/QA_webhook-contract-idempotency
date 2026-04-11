@@ -10,7 +10,8 @@
     "test:failures": "vitest run tests/failure-modes",
     "test:all": "vitest run tests",
     "console": "node support-console/server.js",
-    "start:all": "concurrently -n provider,consumer,console -c blue,green,yellow \"npm run start:provider\" \"npm run start:consumer\" \"npm run console\""
+    "start:all": "concurrently -n provider,consumer,console -c blue,green,yellow \"npm run start:provider\" \"npm run start:consumer\" \"npm run console\"",
+    "reset": "node -e \"const store = require('./runtime/store.js'); store.resetAll(); console.log('Runtime reset complete');\""
   },
   "dependencies": {
     "concurrently": "^8.2.2",

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { isProcessed, markProcessed, getMetrics, reset } from '../../webhook-consumer/src/idempotency-store.js';
+import { isProcessed, markProcessed, getMetrics, reset, getStore } from '../../webhook-consumer/src/idempotency-store.js';
 
 describe('Idempotency Store - Duplicate Event Handling', () => {
   beforeEach(() => {
@@ -29,15 +29,22 @@ describe('Idempotency Store - Duplicate Event Handling', () => {
       const metrics = getMetrics();
       expect(metrics.total_unique).toBe(1);
     });
+
+    it('should use sha256: prefix for payload hash', () => {
+      const payload = validPayload('evt_hash_001');
+      const result = markProcessed('evt_hash_001', payload);
+
+      expect(result.payload_hash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    });
   });
 
   describe('Duplicate Event Handling', () => {
     it('should skip duplicate event (same event ID)', () => {
       const payload = validPayload('evt_dup_002');
-      
+
       // First processing
       markProcessed('evt_dup_002', payload);
-      
+
       // Duplicate processing attempt
       const result = markProcessed('evt_dup_002', payload);
 
@@ -47,7 +54,7 @@ describe('Idempotency Store - Duplicate Event Handling', () => {
 
     it('should increment receive_count on duplicate', () => {
       const payload = validPayload('evt_dup_003');
-      
+
       markProcessed('evt_dup_003', payload);
       markProcessed('evt_dup_003', payload);
       markProcessed('evt_dup_003', payload);
@@ -58,7 +65,7 @@ describe('Idempotency Store - Duplicate Event Handling', () => {
 
     it('should track total duplicates skipped', () => {
       const payload = validPayload('evt_dup_004');
-      
+
       markProcessed('evt_dup_004', payload);
       markProcessed('evt_dup_004', payload);
       markProcessed('evt_dup_004', payload);
@@ -68,11 +75,67 @@ describe('Idempotency Store - Duplicate Event Handling', () => {
     });
   });
 
+  describe('Payload Hash Mismatch Detection', () => {
+    it('should detect payload hash mismatch on duplicate', () => {
+      const payload1 = validPayload('evt_mismatch_001');
+      payload1.data.amount = 1000;
+
+      const payload2 = validPayload('evt_mismatch_001');
+      payload2.data.amount = 2000; // Different payload
+
+      // First processing
+      markProcessed('evt_mismatch_001', payload1);
+
+      // Duplicate with different payload
+      const result = markProcessed('evt_mismatch_001', payload2);
+
+      expect(result.receive_count).toBe(2);
+      expect(result.processed_count).toBe(1);
+      expect(result.payload_hash_mismatches).toBeDefined();
+      expect(result.payload_hash_mismatches.length).toBe(1);
+      expect(result.payload_hash_mismatches[0].expected_hash).toMatch(/^sha256:/);
+      expect(result.payload_hash_mismatches[0].received_hash).toMatch(/^sha256:/);
+    });
+
+    it('should track multiple payload hash mismatches', () => {
+      const payload1 = validPayload('evt_multi_mismatch_001');
+      payload1.data.amount = 1000;
+
+      const payload2 = validPayload('evt_multi_mismatch_001');
+      payload2.data.amount = 2000;
+
+      const payload3 = validPayload('evt_multi_mismatch_001');
+      payload3.data.amount = 3000;
+
+      markProcessed('evt_multi_mismatch_001', payload1);
+      markProcessed('evt_multi_mismatch_001', payload2);
+      const result = markProcessed('evt_multi_mismatch_001', payload3);
+
+      expect(result.payload_hash_mismatches.length).toBe(2);
+    });
+
+    it('should preserve original payload hash on mismatch', () => {
+      const payload1 = validPayload('evt_preserve_001');
+      payload1.data.amount = 1000;
+
+      const payload2 = validPayload('evt_preserve_001');
+      payload2.data.amount = 999999;
+
+      markProcessed('evt_preserve_001', payload1);
+      const result = markProcessed('evt_preserve_001', payload2);
+
+      // Original hash should be preserved
+      const store = getStore();
+      const stored = store.processed_events.find(e => e.event_id === 'evt_preserve_001');
+      expect(stored.data.amount).toBe(1000); // Original data preserved
+    });
+  });
+
   describe('Idempotency Score Calculation', () => {
     it('should calculate idempotency score correctly', () => {
       const payload1 = validPayload('evt_score_001');
       const payload2 = validPayload('evt_score_002');
-      
+
       markProcessed('evt_score_001', payload1);
       markProcessed('evt_score_002', payload2);
       // Duplicate
@@ -96,7 +159,7 @@ describe('Idempotency Store - Duplicate Event Handling', () => {
     it('should return true for processed event', () => {
       const payload = validPayload('evt_check_001');
       markProcessed('evt_check_001', payload);
-      
+
       expect(isProcessed('evt_check_001')).toBe(true);
     });
   });

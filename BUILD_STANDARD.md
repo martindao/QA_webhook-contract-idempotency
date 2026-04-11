@@ -78,3 +78,70 @@ Each repo must have:
 ## Final Rule
 
 If the reviewer opens the repo and still needs imagination to believe it, the repo is not done.
+
+## Portfolio Integration Requirement (MANDATORY)
+
+This repo is **not complete** when the app/repo itself is done.
+It is only complete when it also has:
+
+1. a **project demo page** in the portfolio website
+2. a **landing-page project card** added to the portfolio homepage
+3. a matching **SVG project-card artwork** in the same design family as the existing cards
+4. a **portfolio-ready README** with screenshots/GIFs and business framing
+
+### Required standard
+The quality bar must match **SUP_incident-intelligence-fastpath**.
+That is the minimum accepted standard for:
+- runtime quality
+- operator UX quality
+- simulation/demo quality
+- documentation quality
+- portfolio presentation quality
+
+### Mandatory outputs after repo build
+After the repo itself works, the builder must also create:
+- `PORTFOLIO_INTEGRATION.md` inside the repo root describing:
+  - project title
+  - short portfolio pitch
+  - one-line card description
+  - badge/tag list
+  - recommended screenshot/GIF shots
+  - SVG card artwork direction
+- a portfolio project detail/demo page
+- a landing-page card entry
+- a local SVG card asset for the landing page
+
+### Card artwork rule
+Do not leave the landing-page card without artwork.
+If artwork does not exist yet, create a new SVG in the same visual family as the existing generated cards.
+
+### Anti-copy rule (CRITICAL)
+You are **NOT ALLOWED** to copy a UI 1:1 from another repo, product, or open-source app.
+
+Allowed:
+- research multiple UIs from the internet for inspiration
+- borrow interaction ideas, hierarchy ideas, information architecture ideas, and visual patterns
+- synthesize a new UI that fits this repo and Martin's portfolio system
+
+Not allowed:
+- cloning another dashboard or product screen 1:1
+- copying layout/component composition so closely that it reads as the same product
+- lifting exact visual structure from another repo with only colors changed
+
+### UI quality standard
+The new repo UI must feel:
+- original
+- role-aligned
+- operator-credible
+- portfolio-polished
+- at least as strong as repo 1's final quality bar
+
+### Portfolio verification requirement
+A repo is not considered done until a reviewer can:
+1. run the repo
+2. click a simulation/demo control
+3. inspect generated artifacts
+4. open the project demo page in the portfolio
+5. see the project card on the landing page with proper artwork
+
+If any of these are missing, the repo is incomplete.

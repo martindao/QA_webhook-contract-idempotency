@@ -11,9 +11,10 @@ const { getQueue, addToQueue } = require('../webhook-consumer/src/replay-queue')
 const { generateEvent } = require('../mock-provider/src/event-generator');
 const { sendWebhook } = require('../mock-provider/src/delivery-simulator');
 const { validateContract } = require('../webhook-consumer/src/contract-validator');
+const { generateReport } = require('../flake-control-plane/report-generator');
 
 const PORT = process.env.CONSOLE_PORT || 3003;
-const REPORTS_DIR = path.join(__dirname, '..', 'reports');
+const REPORTS_DIR = path.join(__dirname, '..', 'generated-reports');
 
 // --- Helper Functions ---
 
@@ -60,19 +61,42 @@ function parseBody(req) {
 
 function handleGetContractResults(res) {
   const results = store.getContractResults();
+  
+  // Build violations array with specific examples from validation_details
+  const violations = results.results?.filter(r => !r.contract_valid).map(r => {
+    const errors = r.validation_details?.errors || [];
+    return {
+      webhook_id: r.event_id,
+      type: r.type,
+      field: errors[0]?.field || 'unknown',
+      error: errors[0]?.message || 'Unknown error',
+      error_type: errors[0]?.type || 'unknown',
+      severity: 'critical',
+      validation_details: r.validation_details
+    };
+  }) || [];
+  
   const response = {
     last_validated: results.validated_at,
     total_webhooks: results.total_webhooks,
     contract_valid: results.summary?.valid || 0,
     contract_invalid: results.summary?.invalid || 0,
     pass_rate: results.summary?.pass_rate || 0,
-    violations: results.results?.filter(r => !r.valid).map(r => ({
-      webhook_id: r.event_id,
-      field: r.errors?.[0]?.field || 'unknown',
-      error: r.errors?.[0]?.error || 'Unknown error',
-      severity: 'critical'
-    })) || [],
-    violation_breakdown: results.violation_breakdown || { missing_field: 0, invalid_type: 0, signature_mismatch: 0 }
+    violations,
+    violation_breakdown: results.violation_breakdown || { 
+      missing_field: 0, 
+      invalid_type: 0, 
+      signature_mismatch: 0,
+      stale_timestamp: 0
+    },
+    // Include full results for UI consumption
+    results: results.results?.map(r => ({
+      event_id: r.event_id,
+      type: r.type,
+      contract_valid: r.contract_valid,
+      received_at: r.received_at,
+      validation_details: r.validation_details
+    })) || []
   };
   serveJSON(res, response);
 }
@@ -81,7 +105,7 @@ function handleGetIdempotencyMetrics(res) {
   const metrics = getMetrics();
   const storeData = getStore();
   const queueData = getQueue();
-  
+
   const response = {
     total_events_received: metrics.total_unique + metrics.total_duplicates_skipped,
     unique_events_processed: metrics.total_unique,
@@ -96,11 +120,24 @@ function handleGetIdempotencyMetrics(res) {
       .slice(-5)
       .map(e => ({
         event_id: e.event_id,
+        type: e.type,
         received_count: e.receive_count,
         processed_count: e.processed_count,
         first_received: e.first_processed_at,
-        last_received: e.last_received_at
-      }))
+        last_received: e.last_received_at,
+        payload_hash: e.payload_hash
+      })),
+    // Include all processed events for UI consumption
+    processed_events: storeData.processed_events.map(e => ({
+      event_id: e.event_id,
+      type: e.type,
+      first_processed_at: e.first_processed_at,
+      last_received_at: e.last_received_at,
+      receive_count: e.receive_count,
+      processed_count: e.processed_count,
+      payload_hash: e.payload_hash,
+      has_integrity_warning: e.payload_hash_mismatches?.length > 0
+    }))
   };
   serveJSON(res, response);
 }
@@ -108,12 +145,14 @@ function handleGetIdempotencyMetrics(res) {
 function handleGetReplayQueue(res) {
   const queue = getQueue();
   const now = Date.now();
-  const oldestAge = queue.length > 0 
+  const oldestAge = queue.length > 0
     ? Math.floor((now - new Date(queue[0].queued_at).getTime()) / 1000)
     : 0;
-  
+
   const response = {
     queue_size: queue.length,
+    oldest_event_age_seconds: oldestAge,
+    max_age_seconds: 86400,
     events: queue.map(e => ({
       event_id: e.event_id,
       type: e.type,
@@ -121,9 +160,12 @@ function handleGetReplayQueue(res) {
       queued_at: e.queued_at,
       retry_count: e.retry_count,
       status: e.status,
-      source: e.source || 'unknown'
-    })),
-    oldest_event_age_seconds: oldestAge
+      source: e.source || 'unknown',
+      last_error: e.last_error || null,
+      next_retry_at: e.next_retry_at || null,
+      payload: e.payload || null,
+      age_seconds: e.age_seconds
+    }))
   };
   serveJSON(res, response);
 }
@@ -132,7 +174,7 @@ function handleGetReports(res) {
   if (!fs.existsSync(REPORTS_DIR)) {
     fs.mkdirSync(REPORTS_DIR, { recursive: true });
   }
-  
+
   const files = fs.readdirSync(REPORTS_DIR).filter(f => f.endsWith('.md'));
   const reports = files.map(file => {
     const stats = fs.statSync(path.join(REPORTS_DIR, file));
@@ -141,7 +183,7 @@ function handleGetReports(res) {
       generated_at: stats.mtime.toISOString(),
       type: 'contract-test',
       summary: 'Contract test report',
-      ref: `reports/${file}`
+      ref: `generated-reports/${file}`
     };
   });
   serveJSON(res, reports);
@@ -160,9 +202,28 @@ function handleGetHealth(res) {
 
 async function handleSimulateValid(res) {
   try {
+    store.setScenarioMode('valid-webhook');
     const event = generateEvent();
-    const result = await sendWebhook(event);
     
+    store.logEvent({
+      id: `evt_sim_${Date.now()}`,
+      type: 'simulation_started',
+      scenario: 'valid',
+      event_id: event.id,
+      message: 'Valid webhook simulation started'
+    });
+
+    const result = await sendWebhook(event);
+
+    store.logEvent({
+      id: `evt_sim_${Date.now()}_result`,
+      type: 'simulation_completed',
+      scenario: 'valid',
+      event_id: event.id,
+      success: result.success,
+      message: `Valid webhook ${result.success ? 'succeeded' : 'failed'}`
+    });
+
     const response = {
       success: result.success,
       scenario: 'valid',
@@ -172,24 +233,60 @@ async function handleSimulateValid(res) {
     };
     serveJSON(res, response);
   } catch (e) {
+    store.logEvent({
+      id: `evt_sim_${Date.now()}_error`,
+      type: 'simulation_error',
+      scenario: 'valid',
+      message: e.message
+    });
     serveJSON(res, { success: false, error: e.message }, 500);
   }
 }
 
 async function handleSimulateDuplicate(res) {
   try {
+    store.setScenarioMode('duplicate-webhook');
     const event = generateEvent();
     const results = [];
-    
+
+    store.logEvent({
+      id: `evt_dup_${Date.now()}`,
+      type: 'simulation_started',
+      scenario: 'duplicate',
+      event_id: event.id,
+      message: 'Duplicate webhook simulation started - sending same event 3 times'
+    });
+
     // Send same event 3 times
     for (let i = 0; i < 3; i++) {
       const result = await sendWebhook(event);
       results.push(result);
+      
+      store.logEvent({
+        id: `evt_dup_${Date.now()}_${i}`,
+        type: 'webhook_sent',
+        scenario: 'duplicate',
+        event_id: event.id,
+        attempt: i + 1,
+        processed: result.response?.processed,
+        duplicate: result.response?.duplicate,
+        message: `Attempt ${i + 1}: ${result.response?.processed ? 'processed' : 'skipped as duplicate'}`
+      });
     }
-    
+
     const processedCount = results.filter(r => r.response?.processed).length;
     const duplicatesSkipped = results.filter(r => r.response?.duplicate).length;
-    
+
+    store.logEvent({
+      id: `evt_dup_${Date.now()}_complete`,
+      type: 'simulation_completed',
+      scenario: 'duplicate',
+      event_id: event.id,
+      processed_count: processedCount,
+      duplicates_skipped: duplicatesSkipped,
+      message: `Duplicate test complete: ${processedCount} processed, ${duplicatesSkipped} skipped`
+    });
+
     const response = {
       success: true,
       scenario: 'duplicate',
@@ -200,19 +297,59 @@ async function handleSimulateDuplicate(res) {
     };
     serveJSON(res, response);
   } catch (e) {
+    store.logEvent({
+      id: `evt_dup_${Date.now()}_error`,
+      type: 'simulation_error',
+      scenario: 'duplicate',
+      message: e.message
+    });
     serveJSON(res, { success: false, error: e.message }, 500);
   }
 }
 
 async function handleSimulateOutOfOrder(res) {
   try {
+    store.setScenarioMode('out-of-order-webhook');
     const event1 = generateEvent({ id: `evt_order_001_${Date.now()}`, sequence: 1 });
     const event2 = generateEvent({ id: `evt_order_002_${Date.now()}`, sequence: 2 });
-    
+
+    store.logEvent({
+      id: `evt_ooo_${Date.now()}`,
+      type: 'simulation_started',
+      scenario: 'out-of-order',
+      message: 'Out-of-order webhook simulation started'
+    });
+
     // Send seq 2 first, then seq 1
+    store.logEvent({
+      id: `evt_ooo_${Date.now()}_seq2`,
+      type: 'webhook_sent',
+      scenario: 'out-of-order',
+      event_id: event2.id,
+      sequence: 2,
+      order: 'first',
+      message: `Sending sequence 2 (${event2.id}) first`
+    });
     const result2 = await sendWebhook(event2);
+
+    store.logEvent({
+      id: `evt_ooo_${Date.now()}_seq1`,
+      type: 'webhook_sent',
+      scenario: 'out-of-order',
+      event_id: event1.id,
+      sequence: 1,
+      order: 'second',
+      message: `Sending sequence 1 (${event1.id}) second`
+    });
     const result1 = await sendWebhook(event1);
-    
+
+    store.logEvent({
+      id: `evt_ooo_${Date.now()}_complete`,
+      type: 'simulation_completed',
+      scenario: 'out-of-order',
+      message: 'Out-of-order test complete - events should be reordered correctly'
+    });
+
     const response = {
       success: true,
       scenario: 'out-of-order',
@@ -225,14 +362,29 @@ async function handleSimulateOutOfOrder(res) {
     };
     serveJSON(res, response);
   } catch (e) {
+    store.logEvent({
+      id: `evt_ooo_${Date.now()}_error`,
+      type: 'simulation_error',
+      scenario: 'out-of-order',
+      message: e.message
+    });
     serveJSON(res, { success: false, error: e.message }, 500);
   }
 }
 
 async function handleSimulateDropped(res) {
   try {
+    store.setScenarioMode('dropped-webhook');
     const event = generateEvent();
-    
+
+    store.logEvent({
+      id: `evt_drop_${Date.now()}`,
+      type: 'simulation_started',
+      scenario: 'dropped',
+      event_id: event.id,
+      message: 'Dropped webhook simulation started'
+    });
+
     // Add to replay queue directly (simulating dropped event detection)
     const queued = addToQueue({
       id: event.id,
@@ -241,9 +393,19 @@ async function handleSimulateDropped(res) {
       data: event.data,
       source: 'dropped-event-simulation'
     });
-    
+
     const queueData = getQueue();
-    
+
+    store.logEvent({
+      id: `evt_drop_${Date.now()}_complete`,
+      type: 'simulation_completed',
+      scenario: 'dropped',
+      event_id: event.id,
+      replay_queued: queued !== null,
+      queue_size: queueData.length,
+      message: `Dropped event ${queued ? 'queued for replay' : 'failed to queue'}`
+    });
+
     const response = {
       success: true,
       scenario: 'dropped',
@@ -254,11 +416,23 @@ async function handleSimulateDropped(res) {
     };
     serveJSON(res, response);
   } catch (e) {
+    store.logEvent({
+      id: `evt_drop_${Date.now()}_error`,
+      type: 'simulation_error',
+      scenario: 'dropped',
+      message: e.message
+    });
     serveJSON(res, { success: false, error: e.message }, 500);
   }
 }
 
 function handleRunContractTests(res) {
+  store.logEvent({
+    id: `evt_test_${Date.now()}`,
+    type: 'contract_tests_started',
+    message: 'Contract test suite initiated'
+  });
+
   // Run basic contract validation tests
   const testEvents = [
     generateEvent({ type: 'payment.succeeded' }),
@@ -266,7 +440,7 @@ function handleRunContractTests(res) {
     generateEvent({ type: 'payment.failed' }),
     generateEvent({ type: 'order.shipped' })
   ];
-  
+
   const results = testEvents.map(event => {
     const validation = validateContract(event, {}, null);
     return {
@@ -275,10 +449,10 @@ function handleRunContractTests(res) {
       errors: validation.errors
     };
   });
-  
+
   const passed = results.filter(r => r.valid).length;
   const failed = results.filter(r => !r.valid).length;
-  
+
   // Save results
   const resultsData = {
     validated_at: new Date().toISOString(),
@@ -295,9 +469,18 @@ function handleRunContractTests(res) {
       signature_mismatch: 0
     }
   };
-  
+
   store.saveContractResults(resultsData);
-  
+
+  store.logEvent({
+    id: `evt_test_${Date.now()}_complete`,
+    type: 'contract_tests_completed',
+    tests_run: testEvents.length,
+    passed,
+    failed,
+    message: `Contract tests complete: ${passed} passed, ${failed} failed`
+  });
+
   const response = {
     success: true,
     tests_run: testEvents.length,
@@ -309,44 +492,56 @@ function handleRunContractTests(res) {
 }
 
 function handleGenerateReport(res) {
-  const results = store.getContractResults();
-  const timestamp = new Date().toISOString().split('T')[0];
-  const reportId = `report_${timestamp.replace(/-/g, '_')}`;
-  const reportPath = path.join(REPORTS_DIR, `${reportId}.md`);
-  
-  if (!fs.existsSync(REPORTS_DIR)) {
-    fs.mkdirSync(REPORTS_DIR, { recursive: true });
+  store.logEvent({
+    id: `evt_report_${Date.now()}`,
+    type: 'report_generation_started',
+    message: 'Report generation initiated'
+  });
+
+  try {
+    // Use the new report generator
+    const reportMeta = generateReport({ outputDir: REPORTS_DIR });
+
+    store.logEvent({
+      id: `evt_report_${Date.now()}_complete`,
+      type: 'report_generation_completed',
+      report_id: reportMeta.report_id,
+      message: `Report ${reportMeta.report_id} generated successfully`
+    });
+
+    const response = {
+      success: true,
+      report_id: reportMeta.report_id,
+      ref: reportMeta.ref,
+      generated_at: reportMeta.generated_at,
+      size_bytes: reportMeta.size_bytes
+    };
+    serveJSON(res, response);
+  } catch (e) {
+    store.logEvent({
+      id: `evt_report_${Date.now()}_error`,
+      type: 'report_generation_error',
+      message: e.message
+    });
+    serveJSON(res, { success: false, error: e.message }, 500);
   }
-  
-  const reportContent = `# Contract Test Report - ${timestamp}
-
-## Summary
-- Total Webhooks: ${results.total_webhooks}
-- Contract Valid: ${results.summary?.valid || 0}
-- Contract Invalid: ${results.summary?.invalid || 0}
-- Pass Rate: ${((results.summary?.pass_rate || 0) * 100).toFixed(1)}%
-
-## Violation Breakdown
-- Missing Fields: ${results.violation_breakdown?.missing_field || 0}
-- Invalid Types: ${results.violation_breakdown?.invalid_type || 0}
-- Signature Mismatches: ${results.violation_breakdown?.signature_mismatch || 0}
-
-## Generated At
-${new Date().toISOString()}
-`;
-  
-  fs.writeFileSync(reportPath, reportContent, 'utf8');
-  
-  const response = {
-    success: true,
-    report_id: reportId,
-    ref: `reports/${reportId}.md`
-  };
-  serveJSON(res, response);
 }
 
 function handleReset(res) {
+  store.logEvent({
+    id: `evt_reset_${Date.now()}`,
+    type: 'reset_started',
+    message: 'Reset operation initiated'
+  });
+  
   store.resetAll();
+  
+  store.logEvent({
+    id: `evt_reset_${Date.now()}_complete`,
+    type: 'reset_completed',
+    message: 'All runtime state cleared successfully'
+  });
+  
   serveJSON(res, { success: true });
 }
 
