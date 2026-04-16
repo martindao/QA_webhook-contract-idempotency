@@ -1,0 +1,149 @@
+{
+  "info": {
+    "_postman_id": "webhook-idempotency-tests",
+    "name": "Webhook Idempotency Tests",
+    "description": "Contract testing collection for webhook idempotency scenarios: valid webhook, duplicate events, out-of-order delivery, and dropped/replay cases.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3002",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Valid Webhook",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Webhook-Signature",
+            "value": "sha256=valid_signature_placeholder"
+          },
+          {
+            "key": "X-Webhook-Timestamp",
+            "value": "2026-04-06T08:00:00.000Z"
+          },
+          {
+            "key": "X-Webhook-Event-Id",
+            "value": "evt_valid_001"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_valid_001\",\n  \"type\": \"payment.succeeded\",\n  \"timestamp\": \"2026-04-06T08:00:00.000Z\",\n  \"data\": {\n    \"payment_id\": \"pay_123\",\n    \"amount\": 9900,\n    \"currency\": \"usd\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhook/receive",
+          "host": ["{{baseUrl}}"],
+          "path": ["webhook", "receive"]
+        }
+      }
+    },
+    {
+      "name": "Duplicate Event",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Webhook-Signature",
+            "value": "sha256=valid_signature_placeholder"
+          },
+          {
+            "key": "X-Webhook-Timestamp",
+            "value": "2026-04-06T08:00:00.000Z"
+          },
+          {
+            "key": "X-Webhook-Event-Id",
+            "value": "evt_duplicate_001"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_duplicate_001\",\n  \"type\": \"order.created\",\n  \"timestamp\": \"2026-04-06T08:00:00.000Z\",\n  \"data\": {\n    \"order_id\": \"ord_456\",\n    \"customer_id\": \"cust_789\",\n    \"total\": 5000\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhook/receive",
+          "host": ["{{baseUrl}}"],
+          "path": ["webhook", "receive"]
+        }
+      }
+    },
+    {
+      "name": "Out-of-Order Event",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Webhook-Signature",
+            "value": "sha256=valid_signature_placeholder"
+          },
+          {
+            "key": "X-Webhook-Timestamp",
+            "value": "2026-04-06T08:00:00.000Z"
+          },
+          {
+            "key": "X-Webhook-Event-Id",
+            "value": "evt_outoforder_001"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_outoforder_001\",\n  \"type\": \"order.shipped\",\n  \"timestamp\": \"2026-04-06T08:00:00.000Z\",\n  \"data\": {\n    \"order_id\": \"ord_456\",\n    \"tracking_number\": \"TRACK123\",\n    \"carrier\": \"FedEx\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhook/receive",
+          "host": ["{{baseUrl}}"],
+          "path": ["webhook", "receive"]
+        }
+      }
+    },
+    {
+      "name": "Dropped/Replay Case",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Webhook-Signature",
+            "value": "sha256=valid_signature_placeholder"
+          },
+          {
+            "key": "X-Webhook-Timestamp",
+            "value": "2026-04-06T08:00:00.000Z"
+          },
+          {
+            "key": "X-Webhook-Event-Id",
+            "value": "evt_dropped_001"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"id\": \"evt_dropped_001\",\n  \"type\": \"payment.failed\",\n  \"timestamp\": \"2026-04-06T08:00:00.000Z\",\n  \"data\": {\n    \"payment_id\": \"pay_999\",\n    \"amount\": 2500,\n    \"currency\": \"usd\",\n    \"error_code\": \"insufficient_funds\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/webhook/receive",
+          "host": ["{{baseUrl}}"],
+          "path": ["webhook", "receive"]
+        }
+      }
+    }
+  ]
+}

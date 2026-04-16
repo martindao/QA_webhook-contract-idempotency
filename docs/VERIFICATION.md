@@ -198,3 +198,41 @@ Test edge cases:
 4. Confirm deterministic ordering (by sequence number)
 5. Send events with no sequence number
 5. Confirm fallback to timestamp ordering
+
+## 13. Newman Headless Execution
+
+Run the Postman collection headlessly via Newman:
+
+```bash
+npm run test:newman
+```
+
+This executes the collection defined in `postman/webhook-idempotency.collection.json` against the running services.
+
+**Expected outcome**: Newman summary showing passed tests, response times, and any failures.
+
+To capture output for artifact collection:
+
+```bash
+npm run test:newman 2>&1 | tee docs/tool-proof/newman-sample-output.txt
+```
+
+Verify the artifact exists at `docs/tool-proof/newman-sample-output.txt`.
+
+## 14. k6 Load Test
+
+Execute the k6 performance test:
+
+```bash
+k6 run perf/webhook-load-test.js --summary-export docs/tool-proof/k6-summary.json
+```
+
+**Expected outcome**: k6 outputs iteration counts, request rates, and latency percentiles. Summary JSON exported to `docs/tool-proof/k6-summary.json`.
+
+Key metrics to verify:
+- `http_req_duration`: Request latency (p90, p95, p99)
+- `iterations`: Total test iterations completed
+- `http_req_failed`: Should be 0 for passing runs
+- Thresholds: p(95) latency < 500ms, failure rate < 1%
+
+Verify the artifact exists at `docs/tool-proof/k6-summary.json`.

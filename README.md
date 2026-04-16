@@ -25,15 +25,15 @@ Webhook integrations are fragile. Events drop, duplicate, arrive late, or come o
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│  Mock Provider  │────▶│    Consumer     │────▶│ Support Console │
-│   (port 3001)   │     │  (port 3002)    │     │   (port 3003)   │
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│ Mock Provider   │────▶│ Consumer        │────▶│ Support Console │
+│ (port 3001)     │     │ (port 3002)     │     │ (port 3003)     │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
-                               │
-                               ▼
+                              │
+                              ▼
                         ┌─────────────┐
-                        │  File Store │
-                        │    (JSON)   │
+                        │ File Store  │
+                        │ (JSON)      │
                         └─────────────┘
 ```
 
@@ -115,6 +115,43 @@ The test suite validates:
 - Ordering handler buffers out-of-sequence events
 - Replay queue captures dropped events
 
+## API testing with Postman
+
+Postman = manual/collection authoring. Use Postman to build and debug request collections interactively before automating them in CI.
+
+```bash
+# Import the collection
+postman/webhook-idempotency.collection.json
+
+# Import the environment
+postman/webhook-idempotency.environment.json
+
+# Run manually in Postman GUI to verify endpoints
+```
+
+## Headless verification with Newman
+
+Newman = CI/headless execution. Run the Postman collection in automated pipelines without a GUI.
+
+```bash
+# Run the collection headlessly
+newman run postman/webhook-idempotency.collection.json \
+  -e postman/webhook-idempotency.environment.json
+
+# Sample output: docs/tool-proof/newman-sample-output.txt
+```
+
+## Performance checks with k6
+
+k6 = load/performance under stress. Validate that the webhook consumer handles concurrent load without breaking idempotency guarantees.
+
+```bash
+# Run performance tests
+k6 run k6/webhook-load.js
+
+# Summary output: docs/tool-proof/k6-summary.json
+```
+
 ## Key Features
 
 - **Native Node.js HTTP**: No Express dependency, uses built-in `http` module
@@ -138,35 +175,44 @@ The test suite validates:
 ## Project Structure
 
 ```
-├── mock-provider/          # Webhook sender simulation
+├── mock-provider/           # Webhook sender simulation
 │   └── src/
 │       └── webhook-server.js
-├── webhook-consumer/       # Contract validation and idempotency
+├── webhook-consumer/        # Contract validation and idempotency
 │   └── src/
 │       ├── webhook-handler.js
 │       ├── contract-validator.js
 │       ├── idempotency-store.js
 │       ├── ordering-handler.js
 │       └── replay-queue.js
-├── support-console/        # Operator dashboard
+├── support-console/         # Operator dashboard
 │   └── server.js
-├── flake-control-plane/    # Report generation
+├── flake-control-plane/     # Report generation
 │   └── report-generator.js
-├── runtime/ # File-backed state
+├── runtime/                 # File-backed state
 │   ├── contract-results.json
 │   ├── idempotency-store.json
 │   ├── event-ordering.json
 │   └── replay-queue.json
-├── generated-reports/ # Generated reports
+├── generated-reports/       # Generated reports
 │   └── sample-contract-test-report.md
-├── tests/ # Test suites
+├── tests/                   # Test suites
 │   ├── contract/
 │   ├── idempotency/
 │   └── failure-modes/
-└── docs/                   # Documentation
+├── postman/                 # Postman collection and environment for webhook scenarios
+│   ├── webhook-idempotency.collection.json
+│   └── webhook-idempotency.environment.json
+├── perf/                    # k6 load test scripts
+│   └── webhook-load-test.js
+└── docs/                    # Documentation
     ├── webhook-contract-spec.md
     ├── idempotency-patterns.md
-    └── failure-mode-catalog.md
+    ├── failure-mode-catalog.md
+    └── tool-proof/          # Newman output and k6 summary artifacts
+        ├── newman-sample-output.txt
+        ├── k6-summary.json
+        └── api-testing-workflow.md
 ```
 
 ## Sample Report
